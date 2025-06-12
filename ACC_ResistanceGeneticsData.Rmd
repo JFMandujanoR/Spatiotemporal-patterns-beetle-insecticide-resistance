@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE) 
 ```
 
 Using the Abundance-Climate-Cropland data locations and time to calculate the potato intensity. Then we merge these points with the resistance information and genetics data. At the end of this code we will have the final dataset for analysis.
