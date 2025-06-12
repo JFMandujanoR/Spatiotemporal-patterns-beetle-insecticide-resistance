@@ -1,0 +1,189 @@
+---
+title: "Abundance-Climate-Cropland data now is used for potato intensity calculation, resistance and genetics "
+author: "J. Francisco Mandujano Reyes"
+date: "2024-10-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Using the Abundance-Climate-Cropland data locations and time to calculate the potato intensity. Then we merge these points with the resistance information and genetics data. At the end of this code we will have the final dataset for analysis.
+
+```{r, include=FALSE}
+# Load useful libraries
+
+# library(FedData)
+library(sp)
+library(tidyverse)
+# library(kableExtra)
+library(lubridate)
+library(broman)
+library(readr)
+library(broom)
+library(vroom)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(geodata)
+library(CropScapeR)
+library(rgdal)
+library(raster)
+# library(terra)
+library(sf)
+library(parallel)
+library(readr)
+library(fuzzyjoin)
+```
+
+
+###################################
+###################################
+###################################
+###################################
+###################################
+###################################
+###################################
+###################################
+###################################
+
+
+
+From here: to merge genomics and resistance data!!!!!!!!!!!!!!
+
+
+
+
+
+```{r}
+# read the and clean the genetics data
+
+# genetic_locations = read.csv("/Users/mandujanoreyes/Documents/LocalPhD/Pest_Resistance_Data/Populations_GBS.csv")
+
+#genetic = readr::read_delim("/Users/mandujanoreyes/Documents/LocalPhD/Pest_Resistance_Data/population_eigenvectors.txt", 
+#                            delim = "\t", skip = 1, col_names = FALSE)
+
+
+# OLD ONE
+# genetics = read.csv("/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/Imputation/better_genetics_Mar18.csv")
+
+# NEW ONE
+genetics = read.csv("/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/Imputation/better_genetics_Jun2.csv")
+
+
+
+#genetic_locations = genetic_locations %>% dplyr::select(-X, -X.1, -X.2, -X.3, -X.4, -X.5, -X.6, 
+                                    # -X.7, -X.8, -X.9, -X.10, -X.11, -CrossleyPop,
+                                    # -ID, -FieldName) %>% unique()
+
+# paste the components to the locations by ID
+#genetics = genetic %>% left_join(genetic_locations, by=c("Group.y" = "Group")) %>% 
+#  rename(Pco1 = X2, Pco2 = X3, Pco3 = X4)
+
+genetics# = genetics %>% dplyr::select(-ID) %>% unique()
+
+# unique( substr(genetics$Population,-1,nchar(genetics$Population)-5) )
+```
+
+Now we need to paste the genetic and resistance data to the climate and potato data:
+
+```{r}
+# Just in case we have the pre-dataset saved, we load to merge the resistance data:
+
+# new_df = read.csv("/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/PotatoClimateIntensityData_OK.csv")
+
+
+# new_df = read_csv('/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/Nursultan/FINAL_DATA/02_24_final_wo_outliers_newdata.csv')
+new_df = read_csv('/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/Nursultan/FINAL_DATA/final_data_for_modeling.csv')
+
+new_df$Year = new_df$year
+new_df$Lat = new_df$lat
+new_df$Lon = new_df$lng
+
+# in this part we merge the collected data with the resistance data first by year and by nearest location (0.9 miles).
+
+resist = read.csv("/Users/mandujanoreyes/Documents/LocalPhD/Pest_Resistance_Data/temporal_resistance_data.csv")
+
+# resist$Year = resist$Year 
+
+resist$Year = as.numeric(resist$Year)
+resist$Latitude = as.numeric(resist$Latitude)
+resist$Longitude = as.numeric(resist$Longitude)
+
+resist = resist %>% drop_na()
+
+years = unique(new_df$Year) #2007:2023 #c(2014, 2018, 2022) #c(2015, 2019)-1 #
+
+data_res = c()
+
+# geo_left_join comes from fuzzyjoin
+
+for (year in years){
+  if (year %in% unique(resist$Year)){
+    print(year)
+    current = new_df[new_df$Year == year,] %>%
+    geo_left_join(resist[resist$Year == year,], 
+                   by = c("Lat" = "Latitude", "Lon" = "Longitude"), 
+                   max_dist = 0.2, #0.1244,
+                   unit = "km") %>% dplyr::select(-Year.y) %>% rename(Year = Year.x) # 0.1244
+  }
+  else{
+    current = new_df[new_df$Year == year,]
+  }
+  data_res = bind_rows(data_res, current)
+}
+
+data_res
+# a simple model just because
+# simple_m = lm(Prop_dead ~ Abundance + tmin + tmax + prec + wind + Prop_potato, data = data_res)
+# summary(simple_m)
+
+# in this part we merge the collected data and resistance data with the genetics data by nearest location (0.9 miles).
+
+# data_res2 = data_res %>%
+#     geo_inner_join(genetics,
+#                    by = c("Lat" = "Latitude", "Lon" = "Longitude"), 
+#                    max_dist = 0.9) 
+data_res2 = c()
+
+genetics$Year = genetics$Year 
+
+for (year in years){
+  if (year %in% unique(genetics$Year)){
+    current = data_res[data_res$Year == year,] %>%
+    geo_left_join(genetics[genetics$Year == year,], 
+                   by = c("Lat" = "Latitude", "Lon" = "Longitude"), 
+                   max_dist = 0.2, #0.1244,
+                   unit = "km") %>% dplyr::select(-Year.y) %>% rename(Year = Year.x)
+  }
+  else{
+    print(paste("else: ", year))
+    current = data_res[data_res$Year == year,]
+  }
+  data_res2 = bind_rows(data_res2, current)
+}
+
+data_res2$Latitude = data_res2$Latitude.x
+data_res2$Longitude = data_res2$Longitude.x
+
+data_res2 = data_res2 %>% dplyr::select(-Latitude.x, -Longitude.x,
+                                        -Latitude.y, -Longitude.y, Population)
+
+data_res2$Population = data_res2$Population.y
+
+summary(data_res2)
+
+# then we just save the final dataset that will be used in the analysis
+
+# write.csv(data_res2, file = "PotatoClimateIntensityData_OK_resistance_genetics.csv", row.names=FALSE)
+# write.csv(data_res2, file = "PotatoClimateIntensityData_OK_resistance_better_genetics_Nursultan_vars.csv", row.names=FALSE)
+
+write.csv(data_res2, file = "PotatoClimateIntensityData_OK_resistance_better_genetics_Nursultan_vars_Jun2.csv", row.names=FALSE)
+#write.csv(data_res2, file = "PotatoClimateIntensityData_OK_resistance_better_genetics_Nursultan_vars_Jun2_old_gen.csv", row.names=FALSE)
+```
+
+
+
+
+

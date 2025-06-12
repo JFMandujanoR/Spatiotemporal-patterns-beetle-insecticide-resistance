@@ -1,0 +1,549 @@
+---
+title: "INLA SPDE approach for WNS data"
+author: "J. Francisco Mandujano Reyes"
+date: "2024-10-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+library(ggplot2)
+library(maps)
+library(mapdata)
+library(plotly)
+library(maptools)
+library(dplyr)
+library(broom)
+library(sp)
+library(raster)
+library(tidyr)
+
+library(INLA)
+library(INLAspacetime)
+library(inlabru)
+
+```
+
+Code from:
+https://github.com/eliaskrainski/INLAspacetime
+https://github.com/eliaskrainski/INLAspacetime/blob/master/vignettes/web/piemonte.Rmd
+
+new implementation of non separable model (my work but stationary)
+
+```{r}
+setwd("/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance")
+
+# df.pest = read.csv("PotatoClimateIntensityData_OK_resistance_genetics.csv")
+# df.pest = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed.csv")
+# df.pest = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2.csv")
+
+df.pest = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2.csv")
+
+# df.pest = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_old_gen.csv")
+
+
+
+# df.pest = df.pest[!is.na(df.pest$Prop_dead),]
+#df.pest$Prop_dead = sample(df.pest$Prop_dead[!is.na(df.pest$Prop_dead)], dim(df.pest)[1], replace = TRUE)
+#df.pest$N_beetles = sample(df.pest$N_beetles[!is.na(df.pest$N_beetles)], dim(df.pest)[1], replace = TRUE)
+
+df.pest$N_dead = as.integer(df.pest$N_beetles*df.pest$Prop_dead)
+
+
+# df.pest = df.pest %>% drop_na(Lon, Lat, Year, Abundance, tmin, tmax, prec, wind, Prop_potato, Prop_dead, N_beetles, Pco1, Pco2, Pco3)
+
+# df.pest = df.pest %>% drop_na(Lon, Lat, Year, Abundance, tmin, tmax, prec, wind, Prop_potato, Prop_dead, N_beetles)
+
+# df.pest = df.pest %>% drop_na(Lon, Lat, Year, Abundance, tmin, tmax, prec, wind, Prop_potato, Pco1_imp, Pco2_imp, Pco3_imp)
+
+#df.pest = df.pest %>% drop_na(Lon, Lat, Year, Abundance, tmin, tmax, prec, wind, Prop_potato, Prop_dead, N_beetles, Pco1, Pco2, Pco3)
+
+dataf = df.pest %>% filter(Year >= 2015)
+
+dim(dataf)
+
+#dataf = df.pest
+```
+
+
+```{r}
+dim(dataf)
+summary(dataf)
+```
+
+```{r}
+# create detect outlier function
+detect_outlier <- function(x) {
+   
+  # calculate first quantile
+  Quantile1 <- quantile(x, probs=.25)
+   
+  # calculate third quantile
+  Quantile3 <- quantile(x, probs=.75)
+   
+  # calculate inter quartile range
+  IQR = Quantile3 - Quantile1
+   
+  # return true or false
+  x > Quantile3 + (IQR * 1.5) | x < Quantile1 - (IQR * 1.5)
+}
+ 
+# create remove outlier function
+remove_outlier <- function(dataframe, columns = names(dataframe)) {
+   
+  # for loop to traverse in columns vector
+  for (col in columns) {
+     
+    # remove observation if it satisfies outlier function
+    dataframe <- dataframe[!detect_outlier(dataframe[[col]]), ]
+  }
+   
+  # return dataframe
+  # print("Remove outliers")
+  return(dataframe)
+}
+ 
+# dataf = remove_outlier(df.pest, c('Abundance', 'tmin', 'tmax', 'prec', 'wind', 'Prop_potato', 'Pco1_imp', 'Pco2_imp', 'Pco3_imp'))
+#dataf = remove_outlier(df.pest, c('Abundance', 'tmin', 'tmax', 'prec', 'wind', 'Prop_potato')) #, 'Pco1_imp', 'Pco2_imp', 'Pco3_imp'
+
+dim(dataf)
+```
+
+
+
+```{r}
+# extract coordinates
+coords = as.data.frame( dataf[,c('Lon','Lat')] ) 
+
+library(sp)
+library(rgdal)
+# Define the original coordinates
+coordinates(coords ) <- ~Lon + Lat
+proj4string(coords) <- CRS("+proj=longlat +datum=WGS84")
+# Project to UTM Zone 16N
+coords_utm <- spTransform(coords, CRS("+proj=utm +zone=16 +datum=WGS84 +units=km"))
+
+coords = coords_utm@coords
+
+coords = as.matrix(coords)
+colnames(coords) = c("utmx", "utmy")
+
+dataf$utmx = coords[,1]
+dataf$utmy = coords[,2]
+
+dataf$time = dataf$Year - min(dataf$Year) + 1
+k <- max(unique(dataf$time)) # times
+
+# smesh <- inla.mesh.2d(
+#   loc = as.matrix(coords), 
+#   max.edge = 0.07, 
+#   cutoff = 0.05,
+#   offset = 0.1)
+
+smesh <- inla.mesh.2d(
+  loc = as.matrix(coords), 
+  max.edge = c(5, 100),
+  offset = c(10, 20),
+  cutoff = 3,
+  min.angle = c(26, 21))
+
+#tmesh <- inla.mesh.1d(loc = 1:k)
+h = 1
+tmesh <- fm_mesh_1d(loc = seq(1, max(dataf$time) + h/2, h),  degree = 1)
+
+plot(smesh)
+points(coords, pch = 20 )
+```
+```{r}
+smesh$n
+```
+
+```{r}
+node_coords <- smesh$loc
+distance_matrix <- dist(node_coords)
+min_distance <- min(distance_matrix)
+max_distance <- max(distance_matrix)
+
+min_distance
+# max_distance
+mean(distance_matrix)
+
+sd(dataf$Prop_dead, na.rm = T)
+mean(dataf$Prop_dead*dataf$N_beetles*(1-dataf$Prop_dead), na.rm = T)
+```
+
+
+```{r}
+# stmodel <- stModel.define(
+#     smesh = smesh, ## spatial mesh
+#     tmesh = tmesh, ## temporal mesh
+#     model = '121', ## model, see the paper 121
+#     # model = '102', ## model, see the paper 102
+#     control.priors = list(
+#         prs = c(2*0.56, 0.95), ## (a = 1, b = 0.1) P(spatial range < 1) = 0.1 # P(range < 150) = 0.01
+#         prt = c(log(-2/log(0.8)), 0.1), ## (a = 5, b = 0.1) P(temporal range < 5) = 0.1 # P(temporal range < 1) = 0.1
+#         # prt = c(-sqrt(4)/log(0.286), 0),
+#         psigma = c(0.23, 0.05) ## (a = 1, b = 0.1) P(sigma > 1) = 0.1 # P(sigma > 1) = 0.01
+#         ) #,constr = TRUE # set an overall integrate-to-zero constraint, which is not need but helps model components identification
+#     )
+
+stmodel <- stModel.define(
+    smesh = smesh, ## spatial mesh
+    tmesh = tmesh, ## temporal mesh
+    model = '121', ## model, see the paper 121
+    # model = '102', ## model, see the paper 102
+    control.priors = list(
+        prs = c(1, 0.01),
+        prt = c(1, 0.01),
+        psigma = c(1, 0.01)
+        #prs = c(5, 0.0001), ## (a = 1, b = 0.1) P(spatial range < 1) = 0.1 # P(range < 150) = 0.01
+        # prt = c(log(-2/log(0.9)), 0.01), ## (a = 5, b = 0.1) P(temporal range < 5) = 0.1 # P(temporal range < 1) = 0.01
+        #prt = c(20, 0.0001),
+        # prt = c(-sqrt(4)/log(0.286), 0),
+        #psigma = c(3.87, 0.1) ## (a = 1, b = 0.1) P(sigma > 1) = 0.1 # P(sigma > 1) = 0.01
+        )
+    # ,constr = TRUE # set an overall integrate-to-zero constraint, which is not need but helps model components identification
+    )
+
+stmodel_sep <- stModel.define(
+    smesh = smesh, ## spatial mesh
+    tmesh = tmesh, ## temporal mesh
+    # model = '121', ## model, see the paper 121
+    model = '102', ## model, see the paper 102
+    control.priors = list(
+        prs = c(1, 0.01),
+        prt = c(1, 0.01),
+        psigma = c(1, 0.01)
+        #prs = c(5, 0.0001), ## (a = 1, b = 0.1) P(spatial range < 1) = 0.1 # P(range < 150) = 0.01
+        # prt = c(log(-2/log(0.9)), 0.01), ## (a = 5, b = 0.1) P(temporal range < 5) = 0.1 # P(temporal range < 1) = 0.01
+        #prt = c(20, 0.0001),
+        # prt = c(-sqrt(4)/log(0.286), 0),
+        #psigma = c(3.87, 0.1) ## (a = 1, b = 0.1) P(sigma > 1) = 0.1 # P(sigma > 1) = 0.01
+        )
+    # ,constr = TRUE # set an overall integrate-to-zero constraint, which is not need but helps model components identification
+    )
+```
+
+
+```{r}
+# xnames <- c('gdd', 'cum_gdd', 'tmin_annual', 'tmax_annual', 'annual_prcp', 'summer_tmin', 'summer_avg', 
+# 'summer_prcp', 'winter_avg', 'winter_tmax', 'potato_proportion', 'intensity',
+# 'cpba_count', 'cpbl_count', 'Pco1_imp', 'Pco2_imp', 'Pco3_imp')
+
+xnames <- c('gdd', 'cum_gdd', 'summer_avg_temp', 'summer_hottest_temp', 'summer_avg_percip', 
+'summer_heavy_rainfall_days', 'summer_temp_variability', 'winter_coldest_temp', 
+'winter_heavy_rainfall_days', 'winter_temp_variability', 'winter_warm_day_count', 
+'winter_extreme_cold_days', 'spring_frost_free_days', 'wei_prop', 'wei_intensity', 
+'cpba_count', 'cpbl_count', 'Pco1_imp', 'Pco2_imp', 'Pco3_imp')
+
+xmean <- colMeans(dataf[, xnames])
+
+xsd <- sapply(dataf[,xnames], sd)
+
+dataf[, xnames] = scale(dataf[, xnames], xmean, xsd)
+```
+
+
+
+
+```{r}
+# linpred <- ~ -1 + Intercept(1) + gdd + cum_gdd + tmin_annual + tmax_annual + annual_prcp + summer_tmin + summer_avg + summer_prcp + winter_avg + winter_tmax + potato_proportion + intensity + cpba_count + cpbl_count + Pco1_imp +  Pco3_imp + field(list(space = cbind(utmx, utmy), time = time), model = stmodel) #Pco2_imp +
+
+linpred <- ~ -1 + Intercept(1) + gdd + cum_gdd + summer_avg_temp + summer_hottest_temp + summer_avg_percip + summer_heavy_rainfall_days + summer_temp_variability + winter_coldest_temp + winter_heavy_rainfall_days + winter_temp_variability + winter_warm_day_count + winter_extreme_cold_days + spring_frost_free_days + wei_prop + wei_intensity + cpba_count + cpbl_count + Pco2_imp +  Pco3_imp + field(list(space = cbind(utmx, utmy), time = time), model = stmodel) # + year_effect(time, model = "iid")
+
+
+
+
+# linpred_sep <- ~ -1 + Intercept(1) + gdd + cum_gdd + tmin_annual + tmax_annual + annual_prcp + summer_tmin + summer_avg + summer_prcp + winter_avg + winter_tmax + potato_proportion + intensity + cpba_count + cpbl_count + Pco1_imp +  Pco3_imp + field(list(space = cbind(utmx, utmy), time = time), model = stmodel_sep) #Pco2_imp +
+
+linpred_sep <- ~ -1 + Intercept(1) + gdd + cum_gdd + summer_avg_temp + summer_hottest_temp + summer_avg_percip + summer_heavy_rainfall_days + summer_temp_variability + winter_coldest_temp + winter_heavy_rainfall_days + winter_temp_variability + winter_warm_day_count + winter_extreme_cold_days + spring_frost_free_days + wei_prop + wei_intensity + cpba_count + cpbl_count + Pco2_imp + Pco3_imp + field(list(space = cbind(utmx, utmy), time = time), model = stmodel_sep) # + year_effect(time, model = "iid")
+
+#Pco2_imp +
+
+
+
+# linpred_simple <- ~ -1 + Intercept(1) + gdd + cum_gdd + tmin_annual + tmax_annual + annual_prcp + summer_tmin + summer_avg + summer_prcp + winter_avg + winter_tmax + potato_proportion + intensity + cpba_count + cpbl_count + Pco1_imp +  Pco3_imp 
+
+linpred_simple <- ~ -1 + Intercept(1) + gdd + cum_gdd + summer_avg_temp + summer_hottest_temp + summer_avg_percip + summer_heavy_rainfall_days + summer_temp_variability + winter_coldest_temp + winter_heavy_rainfall_days + winter_temp_variability + winter_warm_day_count + winter_extreme_cold_days + spring_frost_free_days + wei_prop + wei_intensity + cpba_count + cpbl_count + Pco2_imp + Pco3_imp #+ year_effect(time, model = "iid")
+#Pco2_imp +
+```
+
+```{r}
+lkprec <- list(phi = list(prior = "pcprec", param = c(5, 0.5))) # P(phi > 1) = 0.05
+
+cens = 0.001
+
+ctrlf <- list(
+  hyper = lkprec,
+  beta.censor.value = cens
+)
+
+datalike <- like(
+  # formula = Prop_dead ~ ., 
+  formula = N_dead ~ ., 
+  # family = "beta", 
+  family = "binomial", 
+  Ntrials = N_beetles,
+  # family = "gaussian",
+  # control.family = ctrlf, 
+  data=dataf)
+```
+
+
+
+```{r}
+result <- 
+  bru(
+    components = linpred,
+    datalike,
+    options = list(
+      control.inla = list(int.strategy = "eb"),
+      control.fixed = list(expand.factor.strategy = 'inla'),
+      verbose = !TRUE) #!
+    )
+
+result_sep <- 
+  bru(
+    components = linpred_sep,
+    datalike,
+    options = list(
+      control.inla = list(int.strategy = "eb"),
+      control.fixed = list(expand.factor.strategy = 'inla'),
+      verbose = !TRUE) #!
+    )
+
+result_simple <- 
+  bru(
+    components = linpred_simple,
+    datalike,
+    options = list(
+      control.inla = list(int.strategy = "eb"),
+      control.fixed = list(expand.factor.strategy = 'inla'),
+      verbose = !TRUE) #!
+    )
+
+```
+
+```{r}
+summary(result)
+```
+```{r}
+summary(result_simple)
+```
+
+
+```{r}
+summary(result_sep) 
+```
+
+
+
+```{r}
+post.h <- list(
+  #phi = inla.tmarginal(function(x) exp(x), 
+  #                         result$internal.marginals.hyperpar[[1]]),
+  range_s = inla.tmarginal(function(x) exp(x), 
+                           result$internal.marginals.hyperpar[[1]]),
+  range_t = inla.tmarginal(function(x) exp(x), 
+                           result$internal.marginals.hyperpar[[2]]),
+  sigma_u = inla.tmarginal(function(x) exp(x), 
+                           result$internal.marginals.hyperpar[[3]])
+)
+```
+
+
+```{r}
+shyper <- t(sapply(post.h, function(m) 
+  unlist(inla.zmarginal(m, silent = TRUE))))
+shyper[, c(1, 2, 3, 7)]
+```
+```{r}
+shyper
+```
+
+```{r}
+c(s2w=shyper[3]^2, #s2e=shyper$sigma.e[1]^2,
+  rho=shyper[1],
+  a=exp(-sqrt(8*0.5)/shyper[2]))
+
+c(s2w=shyper[9]^2, #s2e=shyper$sigma.e[1]^2,
+  rho=shyper[7],
+  a=exp(-sqrt(8*0.5)/shyper[8]))
+
+c(s2w=shyper[21]^2, #s2e=shyper$sigma.e[1]^2,
+  rho=shyper[19],
+  a=exp(-sqrt(8*0.5)/shyper[20]))
+```
+
+
+```{r}
+result$summary.fixed
+
+result$summary.hyperpar
+
+```
+
+
+```{r}
+
+# coords = dataf[,c(3,4)]
+prmesh1 = smesh
+res = result
+k = max(unique(dataf$time))
+iset = inla.spde.make.index('i', n.spde = smesh$n, n.group = k)
+
+stepsize <- 4 * 100 / 333
+nxy <- round(c(diff(range(coords[, 1])), 
+               diff(range(coords[, 2]))) / stepsize)
+
+projgrid <- inla.mesh.projector(
+  prmesh1, xlim = range(coords[, 1]), 
+  ylim = range(coords[, 2]), dims = nxy)
+
+start = dim(dataf)[1]+dim(result$summary.fixed)[1]+1
+last = dim(res$summary.fitted.values)[1]
+
+xmean <- list()
+for (j in 1:k) {
+  xmean[[j]] <- inla.mesh.project(
+    projgrid, res$summary.random$field$mean[iset$i.group == j])
+    # projgrid, res$summary.fitted.values[(2897+1):(2897+9117),'mean'][iset$i.group == j])
+    #projgrid, res$summary.linear.predictor[start:last,]$mean[iset$i.group == j])
+}
+
+
+# library(splancs)
+# xy.in <- inout(projgrid$lattice$loc, 
+#                 cbind(PRborder[, 1], PRborder[, 2]))
+
+```
+
+
+
+
+```{r,warning = FALSE, message = FALSE}
+library(bigsplines)
+library(viridis)
+
+par(mfrow=c(3,4))
+# par(mfrow=c(3,3))
+
+z_lim = c(min(unlist(xmean), na.rm = T), max(unlist(xmean), na.rm = T))
+
+for (i in 1:k){
+  imagebar(projgrid$x, projgrid$y, xmean[[i]], main=2014+i, zlim = z_lim, xlab = "Easting", ylab="Northing", zlab = "u", col=viridis(50))
+  # contour(projgrid$x, projgrid$y, xmean[[i]], add = TRUE)
+}
+
+
+# par(mfrow=c(1,3))
+# for (j in (k+1):k2) {
+#   if (T){ #j%%3 == 0
+#     r <-raster(t(pnorm(xmean[[j]])), #invlogit
+#                xmn=min(dat$xcoo), xmx=max(dat$xcoo),
+#                ymn=min(dat$ycoo)-0.1, ymx=max(dat$ycoo), 
+#                crs=CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0") )
+#     r <- flip(r, "y")
+#     plot( mask(projectRaster(r, crs= CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"), 
+#                            method = 'bilinear'), sf.na), col = plasma(64), main = 2007+j-1, zlim = c(0,1)) #
+#   }
+# }
+
+```
+
+
+```{r}
+
+# coords = dataf[,c(3,4)]
+prmesh1 = smesh
+# res = result
+k = max(unique(dataf$time))
+iset = inla.spde.make.index('i', n.spde = smesh$n, n.group = k)
+
+stepsize <- 4 * 100 / 333
+nxy <- round(c(diff(range(coords[, 1])), 
+               diff(range(coords[, 2]))) / stepsize)
+
+projgrid <- inla.mesh.projector(
+  prmesh1, xlim = range(coords[, 1]), 
+  ylim = range(coords[, 2]), dims = nxy)
+
+start = dim(dataf)[1]+dim(result$summary.fixed)[1]+1
+last = dim(res$summary.fitted.values)[1]
+
+xsd <- list()
+for (j in 1:k) {
+  xsd[[j]] <- inla.mesh.project(
+    projgrid, res$summary.random$field$sd[iset$i.group == j])
+    # projgrid, res$summary.fitted.values[(2897+1):(2897+9117),'mean'][iset$i.group == j])
+    #projgrid, res$summary.linear.predictor[start:last,]$mean[iset$i.group == j])
+}
+
+
+# par(mfrow=c(3,3))
+par(mfrow=c(3,4))
+
+z_lim = c(min(unlist(xsd), na.rm = T), max(unlist(xsd), na.rm = T))
+
+for (i in 1:k){
+  imagebar(projgrid$x, projgrid$y, xsd[[i]], main=2014+i, zlim = z_lim, xlab = "Easting", ylab="Northing", zlab = "u", col=viridis(50))
+  # contour(projgrid$x, projgrid$y, xmean[[i]], add = TRUE)
+}
+
+```
+
+
+
+
+
+
+
+```{r}
+dataf$Prop_dead_pred = res$summary.fitted.values$mean[1:dim(dataf)[1]]
+
+
+summary(dataf$Prop_dead_pred )
+
+hist( dataf$Prop_dead_pred )
+
+
+```
+
+
+```{r}
+
+plot(dataf$Prop_dead_pred, dataf$Prop_dead, xlab = "Predicted proportion of dead beetles",
+     ylab = "Observed proportion of dead beetles") #, xlim=c(0,1), ylim=c(0,1)
+abline(0,1)
+
+plot(result_simple$summary.fitted.values$mean[1:dim(dataf)[1]], dataf$Prop_dead)
+abline(0,1)
+
+
+```
+
+
+```{r}
+ggplot(dataf, aes(x = utmx, y = utmy, color = Prop_dead_pred)) +
+  geom_point(size = 2) +  # Adjust point size
+  scale_color_viridis_c() +  # Better color scale for continuous variables
+  facet_wrap(~ year) +  # Wrap by year
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(title = "Predicted proportion of dead beetles.",
+       x = "Easting", y = "Northing", color = "Predicted proportion")
+
+```
+
+
+
+```{r}
+
+```
+
+
+
+
+
