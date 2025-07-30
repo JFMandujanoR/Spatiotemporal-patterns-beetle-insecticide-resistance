@@ -7,7 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-
+ 
 
 library(ggplot2)
 library(maps)
@@ -39,17 +39,25 @@ setwd("/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.co
 # df.pest = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed.csv")
 # df.pest = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2.csv")
 
-df.pest = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2.csv")
+df.pest1 = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_v2.csv")
+df.pest2 = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_old_gen_v2.csv")
 
-# df.pest = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_old_gen.csv")
-
-
+df.pest = cbind(df.pest1, Pco1_imp_old = df.pest2$Pco1_imp, Pco3_imp_old = df.pest2$Pco3_imp) 
 
 # df.pest = df.pest[!is.na(df.pest$Prop_dead),]
 #df.pest$Prop_dead = sample(df.pest$Prop_dead[!is.na(df.pest$Prop_dead)], dim(df.pest)[1], replace = TRUE)
 #df.pest$N_beetles = sample(df.pest$N_beetles[!is.na(df.pest$N_beetles)], dim(df.pest)[1], replace = TRUE)
 
 df.pest$N_dead = as.integer(df.pest$N_beetles*df.pest$Prop_dead)
+
+# changing nomenclature to match paper:
+df.pest$Pco1_imp_adp = df.pest$Pco1_imp
+df.pest$Pco2_imp_adp = df.pest$Pco2_imp
+df.pest$Pco3_imp_adp = df.pest$Pco3_imp
+
+df.pest$Pco1_imp = df.pest$Pco1_imp_old
+df.pest$Pco2_imp = df.pest$Pco2_imp_old
+df.pest$Pco3_imp = df.pest$Pco3_imp_old
 
 
 # df.pest = df.pest %>% drop_na(Lon, Lat, Year, Abundance, tmin, tmax, prec, wind, Prop_potato, Prop_dead, N_beetles, Pco1, Pco2, Pco3)
@@ -143,11 +151,18 @@ k <- max(unique(dataf$time)) # times
 #   offset = 0.1)
 
 smesh <- inla.mesh.2d(
-  loc = as.matrix(coords), 
-  max.edge = c(5, 100),
-  offset = c(10, 20),
-  cutoff = 3,
-  min.angle = c(26, 21))
+  loc = as.matrix(coords),
+  max.edge = 8, #c(5, 100),
+  offset = 10, #c(10, 20),
+  cutoff = 5 )#, 3
+  #min.angle = c(26, 21))
+# 
+# smesh <- inla.mesh.2d(
+#   loc = as.matrix(coords),
+#   max.edge = c(5, 100),
+#   offset = c(10, 20),
+#   cutoff = 3,
+#   min.angle = c(26, 21))
 
 #tmesh <- inla.mesh.1d(loc = 1:k)
 h = 1
@@ -167,10 +182,10 @@ min_distance <- min(distance_matrix)
 max_distance <- max(distance_matrix)
 
 min_distance
-# max_distance
-mean(distance_matrix)
+0.5*max_distance
+# mean(distance_matrix)
 
-sd(dataf$Prop_dead, na.rm = T)
+# sd(dataf$Prop_dead, na.rm = T)
 mean(dataf$Prop_dead*dataf$N_beetles*(1-dataf$Prop_dead), na.rm = T)
 ```
 
@@ -195,16 +210,26 @@ stmodel <- stModel.define(
     model = '121', ## model, see the paper 121
     # model = '102', ## model, see the paper 102
     control.priors = list(
-        prs = c(1, 0.01),
-        prt = c(1, 0.01),
-        psigma = c(1, 0.01)
+        # prs = c(1, 0.01), # 1
+        # prt = c(10, 0.01), # 5
+        # psigma = c(1, 0.01) # 1
+        
+        ############# from paper:
+        # prs = c(0.1, 0.01), # 1 P(spatial range < 1) = 0.01
+        # prt = c(0.5, 0.01), # 5 P(temporal range < 10) = 0.01
+        # psigma = c(0.1, 0.01) # 1 P(sigma > 1) = 0.01
+        #########################
+        prs = c(2.0, 0.01), # 1 P(spatial range < 1) = 0.01
+        prt = c(3.0, 0.01), # 5 P(temporal range < 10) = 0.01
+        psigma = c(0.5, 0.01) # 1 P(sigma > 1) = 0.01
+        
         #prs = c(5, 0.0001), ## (a = 1, b = 0.1) P(spatial range < 1) = 0.1 # P(range < 150) = 0.01
         # prt = c(log(-2/log(0.9)), 0.01), ## (a = 5, b = 0.1) P(temporal range < 5) = 0.1 # P(temporal range < 1) = 0.01
         #prt = c(20, 0.0001),
         # prt = c(-sqrt(4)/log(0.286), 0),
-        #psigma = c(3.87, 0.1) ## (a = 1, b = 0.1) P(sigma > 1) = 0.1 # P(sigma > 1) = 0.01
+        # psigma = c(3.87, 0.1) ## (a = 1, b = 0.1) P(sigma > 1) = 0.1 # P(sigma > 1) = 0.01
         )
-    # ,constr = TRUE # set an overall integrate-to-zero constraint, which is not need but helps model components identification
+    ,constr = TRUE # set an overall integrate-to-zero constraint, which is not need but helps model components identification
     )
 
 stmodel_sep <- stModel.define(
@@ -213,16 +238,26 @@ stmodel_sep <- stModel.define(
     # model = '121', ## model, see the paper 121
     model = '102', ## model, see the paper 102
     control.priors = list(
-        prs = c(1, 0.01),
-        prt = c(1, 0.01),
-        psigma = c(1, 0.01)
+        # prs = c(1, 0.01), # 1
+        # prt = c(10, 0.01), # 5
+        # psigma = c(1, 0.01) # 1
+        
+        ############# from paper:
+        # prs = c(0.1, 0.01), # 1 P(spatial range < 1) = 0.01
+        # prt = c(0.5, 0.01), # 5 P(temporal range < 10) = 0.01
+        # psigma = c(0.1, 0.01) # 1 P(sigma > 1) = 0.01
+        #########################
+        prs = c(2.0, 0.01), # 1 P(spatial range < 1) = 0.01
+        prt = c(3.0, 0.01), # 5 P(temporal range < 10) = 0.01
+        psigma = c(0.5, 0.01) # 1 P(sigma > 1) = 0.01
+        
         #prs = c(5, 0.0001), ## (a = 1, b = 0.1) P(spatial range < 1) = 0.1 # P(range < 150) = 0.01
         # prt = c(log(-2/log(0.9)), 0.01), ## (a = 5, b = 0.1) P(temporal range < 5) = 0.1 # P(temporal range < 1) = 0.01
         #prt = c(20, 0.0001),
         # prt = c(-sqrt(4)/log(0.286), 0),
-        #psigma = c(3.87, 0.1) ## (a = 1, b = 0.1) P(sigma > 1) = 0.1 # P(sigma > 1) = 0.01
+        # psigma = c(3.87, 0.1) ## (a = 1, b = 0.1) P(sigma > 1) = 0.1 # P(sigma > 1) = 0.01
         )
-    # ,constr = TRUE # set an overall integrate-to-zero constraint, which is not need but helps model components identification
+    ,constr = TRUE # set an overall integrate-to-zero constraint, which is not need but helps model components identification
     )
 ```
 
@@ -232,17 +267,32 @@ stmodel_sep <- stModel.define(
 # 'summer_prcp', 'winter_avg', 'winter_tmax', 'potato_proportion', 'intensity',
 # 'cpba_count', 'cpbl_count', 'Pco1_imp', 'Pco2_imp', 'Pco3_imp')
 
+dataf$cpb_count = dataf$cpba_count + dataf$cpbl_count #)/2
+
 xnames <- c('gdd', 'cum_gdd', 'summer_avg_temp', 'summer_hottest_temp', 'summer_avg_percip', 
-'summer_heavy_rainfall_days', 'summer_temp_variability', 'winter_coldest_temp', 
-'winter_heavy_rainfall_days', 'winter_temp_variability', 'winter_warm_day_count', 
-'winter_extreme_cold_days', 'spring_frost_free_days', 'wei_prop', 'wei_intensity', 
-'cpba_count', 'cpbl_count', 'Pco1_imp', 'Pco2_imp', 'Pco3_imp')
+            'summer_heavy_rainfall_days', 'summer_temp_variability', 'winter_coldest_temp', 
+            'winter_heavy_rainfall_days', 'winter_temp_variability', 'winter_warm_day_count', 
+            'winter_extreme_cold_days', 'spring_frost_free_days', 'wei_prop', 'wei_intensity', 
+            'cpb_count', 'Pco1_imp', 'Pco3_imp', 'Pco2_imp_adp', 'Pco3_imp_adp')
 
+
+# scale
 xmean <- colMeans(dataf[, xnames])
-
 xsd <- sapply(dataf[,xnames], sd)
-
 dataf[, xnames] = scale(dataf[, xnames], xmean, xsd)
+
+# # min max normalize
+# normalize <- function(x) { return((x- min(x)) /(max(x)-min(x))) }
+# dataf[, xnames] = sapply(dataf[, xnames], normalize)
+
+# image( cor(dataf[, xnames]) )
+```
+
+
+```{r}
+ggplot(gather(dataf[,xnames]), aes(value)) + 
+    geom_histogram(bins = 10) + 
+    facet_wrap(~key, scales = 'free_x')
 ```
 
 
@@ -251,29 +301,40 @@ dataf[, xnames] = scale(dataf[, xnames], xmean, xsd)
 ```{r}
 # linpred <- ~ -1 + Intercept(1) + gdd + cum_gdd + tmin_annual + tmax_annual + annual_prcp + summer_tmin + summer_avg + summer_prcp + winter_avg + winter_tmax + potato_proportion + intensity + cpba_count + cpbl_count + Pco1_imp +  Pco3_imp + field(list(space = cbind(utmx, utmy), time = time), model = stmodel) #Pco2_imp +
 
-linpred <- ~ -1 + Intercept(1) + gdd + cum_gdd + summer_avg_temp + summer_hottest_temp + summer_avg_percip + summer_heavy_rainfall_days + summer_temp_variability + winter_coldest_temp + winter_heavy_rainfall_days + winter_temp_variability + winter_warm_day_count + winter_extreme_cold_days + spring_frost_free_days + wei_prop + wei_intensity + cpba_count + cpbl_count + Pco2_imp +  Pco3_imp + field(list(space = cbind(utmx, utmy), time = time), model = stmodel) # + year_effect(time, model = "iid")
+# linpred <- ~ -1 + gdd + cum_gdd + summer_avg_temp + summer_hottest_temp + summer_avg_percip + summer_heavy_rainfall_days + summer_temp_variability + winter_coldest_temp + winter_heavy_rainfall_days + winter_temp_variability + winter_warm_day_count + winter_extreme_cold_days + spring_frost_free_days + wei_prop + wei_intensity + cpb_count + Pco1_imp + Pco3_imp + Pco2_imp_adp + Pco3_imp_adp + field(list(space = cbind(utmx, utmy), time = time), model = stmodel)
+
+#  
+linpred <- ~ -1+gdd+cum_gdd+summer_avg_temp+summer_hottest_temp+wei_prop+Pco3_imp+field(list(space = cbind(utmx, utmy), time = time), model = stmodel) #Intercept(1) +
 
 
 
 
-# linpred_sep <- ~ -1 + Intercept(1) + gdd + cum_gdd + tmin_annual + tmax_annual + annual_prcp + summer_tmin + summer_avg + summer_prcp + winter_avg + winter_tmax + potato_proportion + intensity + cpba_count + cpbl_count + Pco1_imp +  Pco3_imp + field(list(space = cbind(utmx, utmy), time = time), model = stmodel_sep) #Pco2_imp +
+# linpred_sep <- ~ -1 + Intercept(1) + gdd + cum_gdd + tmin_annual + tmax_annual + annual_prcp + summer_tmin + summer_avg + summer_prcp + winter_avg + winter_tmax + potato_proportion + intensity + cpba_count + cpbl_count + Pco1_imp +  Pco3_imp + field(list(space = cbind(utmx, utmy), time = time), model = stmodel_sep)
 
-linpred_sep <- ~ -1 + Intercept(1) + gdd + cum_gdd + summer_avg_temp + summer_hottest_temp + summer_avg_percip + summer_heavy_rainfall_days + summer_temp_variability + winter_coldest_temp + winter_heavy_rainfall_days + winter_temp_variability + winter_warm_day_count + winter_extreme_cold_days + spring_frost_free_days + wei_prop + wei_intensity + cpba_count + cpbl_count + Pco2_imp + Pco3_imp + field(list(space = cbind(utmx, utmy), time = time), model = stmodel_sep) # + year_effect(time, model = "iid")
+# linpred_sep <- ~ -1 +  gdd + cum_gdd + summer_avg_temp + summer_hottest_temp + summer_avg_percip + summer_heavy_rainfall_days + summer_temp_variability + winter_coldest_temp + winter_heavy_rainfall_days + winter_temp_variability + winter_warm_day_count + winter_extreme_cold_days + spring_frost_free_days + wei_prop + wei_intensity + cpb_count + Pco1_imp + Pco3_imp + Pco2_imp_adp + Pco3_imp_adp + field(list(space = cbind(utmx, utmy), time = time), model = stmodel_sep)
 
-#Pco2_imp +
+ 
+linpred_sep <- ~ -1+gdd+cum_gdd +summer_avg_temp+summer_hottest_temp+wei_prop+Pco3_imp+field(list(space = cbind(utmx, utmy), time = time), model = stmodel_sep) #Intercept(1) +
+
 
 
 
 # linpred_simple <- ~ -1 + Intercept(1) + gdd + cum_gdd + tmin_annual + tmax_annual + annual_prcp + summer_tmin + summer_avg + summer_prcp + winter_avg + winter_tmax + potato_proportion + intensity + cpba_count + cpbl_count + Pco1_imp +  Pco3_imp 
 
-linpred_simple <- ~ -1 + Intercept(1) + gdd + cum_gdd + summer_avg_temp + summer_hottest_temp + summer_avg_percip + summer_heavy_rainfall_days + summer_temp_variability + winter_coldest_temp + winter_heavy_rainfall_days + winter_temp_variability + winter_warm_day_count + winter_extreme_cold_days + spring_frost_free_days + wei_prop + wei_intensity + cpba_count + cpbl_count + Pco2_imp + Pco3_imp #+ year_effect(time, model = "iid")
-#Pco2_imp +
+linpred_simple <- ~ -1+gdd+cum_gdd + summer_avg_temp + summer_hottest_temp + summer_avg_percip + summer_heavy_rainfall_days + summer_temp_variability + winter_coldest_temp + winter_heavy_rainfall_days + winter_temp_variability + winter_warm_day_count + winter_extreme_cold_days + spring_frost_free_days + wei_prop + wei_intensity + cpb_count + Pco1_imp + Pco3_imp + Pco2_imp_adp + Pco3_imp_adp #
+
+#+ farm_effect(farm, model = "iid") # + year_effect(time, model = "seasonal", season.length = 10)
+
+
+# linpred_simple <- ~ -1 + Intercept(1) + gdd+cum_gdd +summer_hottest_temp+winter_heavy_rainfall_days+wei_intensity+cpba_count+cpbl_count+Pco3_imp_old
+
+
 ```
 
 ```{r}
-lkprec <- list(phi = list(prior = "pcprec", param = c(5, 0.5))) # P(phi > 1) = 0.05
+lkprec <- list(phi = list(prior = "pcprec", param = c(0.1, 0.05))) # P(phi > 1) = 0.05
 
-cens = 0.001
+cens = 0.01
 
 ctrlf <- list(
   hyper = lkprec,
@@ -282,13 +343,92 @@ ctrlf <- list(
 
 datalike <- like(
   # formula = Prop_dead ~ ., 
+  
   formula = N_dead ~ ., 
-  # family = "beta", 
+  
+  #family = "beta", 
   family = "binomial", 
+  
+  # family = "betabinomial",
   Ntrials = N_beetles,
+  
+  # prior distribution on precision: controls how tightly the success probability is distributed around its mean
+  # control.family = list(
+  #   hyper = list(
+  #     theta = list(
+  #       prior = "pc.prec",
+  #       param = c(0.1, 0.01)  # P(sd > 1) = 0.1 → prefers ~small overdispersion
+  #     )
+  #     )
+  #   ),
+  
   # family = "gaussian",
-  # control.family = ctrlf, 
+  #control.family = ctrlf, 
+  
   data=dataf)
+
+
+######################################################################################################
+# Define shrinkage priors for each covariate
+cf <- list(
+  mean = list(),  # default mean = 0 for unspecified parameters
+  prec = list()   # placeholder for individual precisions
+)
+# List of your covariates
+vars <- c(
+  "gdd", "cum_gdd", "summer_avg_temp", "summer_hottest_temp",
+  "summer_avg_percip", "summer_heavy_rainfall_days",
+  "summer_temp_variability", "winter_coldest_temp",
+  "winter_heavy_rainfall_days", "winter_temp_variability",
+  "winter_warm_day_count", "winter_extreme_cold_days",
+  "spring_frost_free_days", "wei_prop", "wei_intensity",
+  "cpb_count", 'Pco1_imp', 'Pco3_imp', 'Pco2_imp_adp', 'Pco3_imp_adp'
+)
+
+#means_vector = result_simple$summary.fixed$mean
+means_vector = c(0.870125300, 0.881702515,  1.046808745, -3.163300779,  0.713990880,  0.040640645, -2.548006216,
+                 -0.583184585, -0.326397272, -1.637719698, -2.076140409, -0.115863831, -0.933383080,  0.429569980,  
+                 0.168097287,  0.049466646,  0.011328881,  0.056465377, 0.005338820, -0.003849697)
+#sds_vector = result_simple$summary.fixed$sd
+i = 1
+
+# Assign mean=0, precision=100 (i.e., SD ≈ 0.1 on coefficient scale)
+for (v in vars) {
+  cf$mean[[v]] <-  means_vector[i] #0 # 
+  cf$prec[[v]] <- 1000000 # 1/(sds_vector[i])^2 #100 # 
+  i = i+1
+}
+# fit afterwards:
+# Intercept                   5.523 2.006      1.592    5.523      9.454  5.523   0
+# gdd                         0.832 0.168      0.503    0.832      1.160  0.832   0
+# cum_gdd                     0.964 0.212      0.549    0.964      1.380  0.964   0
+# summer_avg_temp             0.580 0.509     -0.418    0.580      1.578  0.580   0
+# summer_hottest_temp        -2.938 0.890     -4.682   -2.938     -1.195 -2.938   0
+# summer_avg_percip           0.497 1.290     -2.032    0.497      3.026  0.497   0
+# summer_heavy_rainfall_days  0.517 0.573     -0.606    0.517      1.640  0.517   0
+# summer_temp_variability    -0.720 1.981     -4.603   -0.720      3.164 -0.720   0
+# winter_coldest_temp         0.192 1.032     -1.830    0.192      2.215  0.192   0
+# winter_heavy_rainfall_days -1.013 0.381     -1.760   -1.013     -0.267 -1.013   0
+# winter_temp_variability    -1.344 1.732     -4.738   -1.344      2.051 -1.344   0
+# winter_warm_day_count       5.679 3.102     -0.401    5.679     11.758  5.679   0
+# winter_extreme_cold_days   -0.757 0.670     -2.071   -0.757      0.557 -0.757   0
+# spring_frost_free_days     -1.073 0.778     -2.598   -1.073      0.451 -1.073   0
+# wei_prop                    0.381 0.112      0.161    0.381      0.601  0.381   0
+# wei_intensity               0.207 0.140     -0.068    0.207      0.481  0.207   0
+# cpb_count                  -0.097 0.118     -0.328   -0.097      0.133 -0.097   0
+# Pco1_imp                    0.008 0.014     -0.019    0.008      0.035  0.008   0
+# Pco3_imp                    0.049 0.015      0.020    0.049      0.079  0.049   0
+# Pco2_imp_adp                0.002 0.011     -0.019    0.002      0.023  0.002   0
+# Pco3_imp_adp               -0.010 0.014     -0.038   -0.010      0.017 -0.010   0
+
+# For the intercept, use a less restrictive prior (e.g., SD ≈ 10)
+# cf$mean[["(Intercept)"]] <- means_vector[i]
+# cf$prec[["(Intercept)"]] <- 1000000 # 0.01
+
+#cf$mean[["Intercept"]] <- means_vector[1]
+#cf$prec[["Intercept"]] <- 10000 #1/(sds_vector[1])^2
+######################################################################################################
+
 ```
 
 
@@ -299,8 +439,12 @@ result <-
     components = linpred,
     datalike,
     options = list(
-      control.inla = list(int.strategy = "eb"),
-      control.fixed = list(expand.factor.strategy = 'inla'),
+      control.fixed = cf,
+      # control.inla = list(int.strategy = "eb"),
+      # control.fixed = list(compute = FALSE), #expand.factor.strategy = 'inla'
+      # inla.mode="experimental",
+      #control.compute = list(config = TRUE),
+      #control.predictor = list(compute = TRUE),
       verbose = !TRUE) #!
     )
 
@@ -309,8 +453,12 @@ result_sep <-
     components = linpred_sep,
     datalike,
     options = list(
-      control.inla = list(int.strategy = "eb"),
-      control.fixed = list(expand.factor.strategy = 'inla'),
+      control.fixed = cf,
+      # control.inla = list(int.strategy = "eb"),
+      # control.fixed = list(compute = FALSE),  #list(expand.factor.strategy = 'inla'), 
+      # inla.mode="experimental",
+      #control.compute = list(config = TRUE),
+      #control.predictor = list(compute = TRUE),
       verbose = !TRUE) #!
     )
 
@@ -319,16 +467,23 @@ result_simple <-
     components = linpred_simple,
     datalike,
     options = list(
-      control.inla = list(int.strategy = "eb"),
-      control.fixed = list(expand.factor.strategy = 'inla'),
+      control.fixed = cf,
+      # control.inla = list(int.strategy = "eb"),
+      # control.fixed = list(compute = FALSE),  
+      # control.fixed = list(expand.factor.strategy = 'inla'),
+      #control.compute = list(config = TRUE),
+      #control.predictor = list(compute = TRUE),
       verbose = !TRUE) #!
     )
 
 ```
 
+
 ```{r}
 summary(result)
 ```
+
+
 ```{r}
 summary(result_simple)
 ```
@@ -341,15 +496,17 @@ summary(result_sep)
 
 
 ```{r}
+res = result_sep
+
 post.h <- list(
   #phi = inla.tmarginal(function(x) exp(x), 
   #                         result$internal.marginals.hyperpar[[1]]),
   range_s = inla.tmarginal(function(x) exp(x), 
-                           result$internal.marginals.hyperpar[[1]]),
+                           res$internal.marginals.hyperpar[[1]]),
   range_t = inla.tmarginal(function(x) exp(x), 
-                           result$internal.marginals.hyperpar[[2]]),
+                           res$internal.marginals.hyperpar[[2]]),
   sigma_u = inla.tmarginal(function(x) exp(x), 
-                           result$internal.marginals.hyperpar[[3]])
+                           res$internal.marginals.hyperpar[[3]])
 )
 ```
 
@@ -379,9 +536,9 @@ c(s2w=shyper[21]^2, #s2e=shyper$sigma.e[1]^2,
 
 
 ```{r}
-result$summary.fixed
+res$summary.fixed
 
-result$summary.hyperpar
+res$summary.hyperpar
 
 ```
 
@@ -390,7 +547,7 @@ result$summary.hyperpar
 
 # coords = dataf[,c(3,4)]
 prmesh1 = smesh
-res = result
+
 k = max(unique(dataf$time))
 iset = inla.spde.make.index('i', n.spde = smesh$n, n.group = k)
 

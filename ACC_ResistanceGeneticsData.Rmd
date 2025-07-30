@@ -66,10 +66,10 @@ From here: to merge genomics and resistance data!!!!!!!!!!!!!!
 
 
 # OLD ONE
-# genetics = read.csv("/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/Imputation/better_genetics_Mar18.csv")
+genetics = read.csv("/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/Imputation/better_genetics_Mar18.csv")
 
 # NEW ONE
-genetics = read.csv("/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/Imputation/better_genetics_Jun2.csv")
+#genetics = read.csv("/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/Imputation/better_genetics_Jun2.csv")
 
 
 
@@ -174,15 +174,18 @@ data_res2$Population = data_res2$Population.y
 
 summary(data_res2)
 
+
+```
+
+```{r}
 # then we just save the final dataset that will be used in the analysis
 
 # write.csv(data_res2, file = "PotatoClimateIntensityData_OK_resistance_genetics.csv", row.names=FALSE)
 # write.csv(data_res2, file = "PotatoClimateIntensityData_OK_resistance_better_genetics_Nursultan_vars.csv", row.names=FALSE)
 
-write.csv(data_res2, file = "PotatoClimateIntensityData_OK_resistance_better_genetics_Nursultan_vars_Jun2.csv", row.names=FALSE)
-#write.csv(data_res2, file = "PotatoClimateIntensityData_OK_resistance_better_genetics_Nursultan_vars_Jun2_old_gen.csv", row.names=FALSE)
+#write.csv(data_res2, file = "PotatoClimateIntensityData_OK_resistance_better_genetics_Nursultan_vars_Jun2.csv", row.names=FALSE)
+write.csv(data_res2, file = "PotatoClimateIntensityData_OK_resistance_better_genetics_Nursultan_vars_Jun2_old_gen.csv", row.names=FALSE)
 ```
-
 
 
 

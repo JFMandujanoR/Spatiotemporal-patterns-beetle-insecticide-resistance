@@ -26,13 +26,14 @@ library(tidyr)
 ```{r, warning = FALSE, message = FALSE}
 setwd("/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance")
 
-# data = read_csv('/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/Nursultan/merged_data/fields_with_climate_filled.csv')
-
 # df.pest = read.csv("PotatoClimateIntensityData_OK_resistance_genetics.csv")
-
 # df.pest = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed.csv")
+# df.pest = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2.csv")
 
-df.pest = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_Nursultan_vars_Jun2.csv")
+df.pest1 = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_v2.csv")
+df.pest2 = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_old_gen_v2.csv")
+
+df.pest = cbind(df.pest1, Pco1_old = df.pest2$Pco1, Pco2_old = df.pest2$Pco2, Pco3_old = df.pest2$Pco3) 
 
 
 
@@ -64,6 +65,11 @@ df.pest$N_dead = as.integer(df.pest$N_beetles*df.pest$Prop_dead)
 Only after 2015 because we only have three years with resistance data: 2015, 2019, 2023
 
 ```{r}
+summary(unique(df.pest$field))
+```
+
+
+```{r}
 dim(df.pest)
 summary(df.pest)
 ```
@@ -84,8 +90,17 @@ df.pest$wei_prop = as.numeric(df.pest$wei_prop)
 
 df.pest$year = as.character(df.pest$year)
 
+df.pest$Pco1_adp = df.pest$Pco1
+df.pest$Pco2_adp = df.pest$Pco2
+df.pest$Pco3_adp = df.pest$Pco3
+
+df.pest$Pco1 = df.pest$Pco1_old
+df.pest$Pco2 = df.pest$Pco2_old
+df.pest$Pco3 = df.pest$Pco3_old
+
+
 df.pest %>%
-  dplyr::select(N_beetles, Prop_dead, gdd, cum_gdd, summer_avg_temp, summer_hottest_temp, summer_avg_percip, summer_heavy_rainfall_days, summer_temp_variability, winter_coldest_temp, winter_heavy_rainfall_days, winter_temp_variability, winter_warm_day_count, winter_extreme_cold_days, spring_frost_free_days, wei_prop, wei_intensity, cpba_count, cpbl_count, Pco1, Pco2, Pco3, lng, lat, year) %>%
+  dplyr::select(N_beetles, Prop_dead, gdd, cum_gdd, summer_avg_temp, summer_hottest_temp, summer_avg_percip, summer_heavy_rainfall_days, summer_temp_variability, winter_coldest_temp, winter_heavy_rainfall_days, winter_temp_variability, winter_warm_day_count, winter_extreme_cold_days, spring_frost_free_days, wei_prop, wei_intensity, cpba_count, cpbl_count, Pco1, Pco2, Pco3, Pco1_adp, Pco2_adp, Pco3_adp, lng, lat, year) %>%
   tbl_summary() %>%
   as_gt() 
 
