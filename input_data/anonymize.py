@@ -1,17 +1,7 @@
 """Anonymize specified identifier columns across all CSV files in this folder.
 
 Behavior
-- Scans the current directory for *.csv files (non-recursive).
-- For each CSV, if any of the target columns exist, replace their values with stable anonymized labels.
-- Mappings are stored in `.anon_mappings.json` so anonymized labels are consistent across files and runs.
-- Writes anonymized copies with `_anon.csv` suffix by default. Use `--inplace` to overwrite original files.
-
-Usage
-    python anonymize.py [--inplace]
-
-Target columns (case-sensitive): population, grower, farm, field, BamID, SampleID
-
-Note: The script preserves other columns and file structure. It only replaces string values in the listed fields.
+...
 """
 
 import argparse
@@ -27,15 +17,17 @@ except ImportError:
     print("pandas is required. Install it with: pip install pandas")
     raise
 
-TARGET_COLUMNS = ["population", "grower", "farm", "field", "BamID", "SampleID"]
+# canonical (lowercase) target column names
+TARGET_COLUMNS = ["population", "grower", "farm", "field", "bamid", "sampleid", "group"]
 MAPPING_FILE = ".anon_mappings.json"
 PREFIXES = {
     "population": "POP",
     "grower": "GROWER",
     "farm": "FARM",
     "field": "FIELD",
-    "BamID": "BAM",
-    "SampleID": "SAMPLE",
+    "bamid": "BAM",
+    "sampleid": "SAMPLE",
+    "group": "GROUP",
 }
 
 
@@ -68,27 +60,26 @@ def next_label(existing_map: dict, prefix: str):
 
 
 def anonymize_dataframe(df: pd.DataFrame, mappings: dict):
-    # For each target column present in df, map values
-    for col in TARGET_COLUMNS:
-        if col in df.columns:
-            col_map = mappings.get(col, {})
-            prefix = PREFIXES.get(col, col.upper())
+    # Treat column matching case-insensitively: map dataframe columns to canonical keys
+    cols_present = {col: col.lower() for col in df.columns}
+    # for each dataframe column whose lowercase is a target, apply mapping under the canonical key
+    for orig_col, lc in cols_present.items():
+        if lc in TARGET_COLUMNS:
+            col_map = mappings.get(lc, {})
+            prefix = PREFIXES.get(lc, lc.upper())
 
-            # We will create new labels for unseen values in order of appearance
             def map_value(x):
-                # treat NaN/empty as is
                 if pd.isna(x):
                     return x
                 s = str(x)
                 if s in col_map:
                     return col_map[s]
-                # assign new label
                 new_label = next_label(col_map, prefix)
                 col_map[s] = new_label
-                mappings[col] = col_map
+                mappings[lc] = col_map
                 return new_label
 
-            df[col] = df[col].apply(map_value)
+            df[orig_col] = df[orig_col].apply(map_value)
     return df
 
 

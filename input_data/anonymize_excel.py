@@ -22,14 +22,15 @@ except ImportError:
     print("pandas is required. Run this script in an environment with pandas installed (e.g. jfmr).")
     sys.exit(2)
 
-TARGET_COLUMNS = ["population", "grower", "farm", "field", "BamID", "SampleID"]
+TARGET_COLUMNS = ["population", "grower", "farm", "field", "bamid", "sampleid", "group"]
 PREFIXES = {
     "population": "POP",
     "grower": "GROWER",
     "farm": "FARM",
     "field": "FIELD",
-    "BamID": "BAM",
-    "SampleID": "SAMPLE",
+    "bamid": "BAM",
+    "sampleid": "SAMPLE",
+    "group": "GROUP",
 }
 MAPPING_FILE = Path(__file__).parent / ".anon_mappings.json"
 INPUT_XLSX = Path(__file__).parent / "Table_Genomic_Samplesv2.xlsx"
@@ -66,10 +67,12 @@ def next_label(existing_map, prefix):
 
 
 def anonymize(df, mappings):
-    for col in TARGET_COLUMNS:
-        if col in df.columns:
-            col_map = mappings.get(col, {})
-            prefix = PREFIXES.get(col, col.upper())
+    # handle column names case-insensitively
+    cols_present = {col: col.lower() for col in df.columns}
+    for orig_col, lc in cols_present.items():
+        if lc in TARGET_COLUMNS:
+            col_map = mappings.get(lc, {})
+            prefix = PREFIXES.get(lc, lc.upper())
 
             def map_value(x):
                 if pd.isna(x):
@@ -79,10 +82,10 @@ def anonymize(df, mappings):
                     return col_map[s]
                 new_label = next_label(col_map, prefix)
                 col_map[s] = new_label
-                mappings[col] = col_map
+                mappings[lc] = col_map
                 return new_label
 
-            df[col] = df[col].apply(map_value)
+            df[orig_col] = df[orig_col].apply(map_value)
     return df
 
 
