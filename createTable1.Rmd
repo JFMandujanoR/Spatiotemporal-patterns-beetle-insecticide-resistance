@@ -1,0 +1,97 @@
+---
+title: "Table 1 — Descriptive statistics of merged dataset (variables used in manuscript)"
+author: "J. Francisco Mandujano Reyes"
+date: "4/25/2022"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Core packages used to prepare and summarize the dataset
+library(INLA)
+library(ggplot2)
+library(dplyr); library(tidyr)
+library(broom); library(gtsummary)
+library(sp); library(rgdal); library(raster)
+library(plotly); library(maptools)
+
+# Configure data paths here (edit if you keep inputs elsewhere)
+workdir <- "/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance"
+if (dir.exists(workdir)) setwd(workdir)
+
+data_file1 <- 'PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_v2.csv'
+data_file2 <- 'PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_old_gen_v2.csv'
+
+```
+
+```{r, warning = FALSE, message = FALSE}
+# Load merged datasets (current and the older-genetics columns used for comparison)
+df.pest1 <- read.csv(data_file1)
+df.pest2 <- read.csv(data_file2)
+
+# Attach older PCo columns (keeps original column names used in downstream scripts)
+df.pest <- cbind(df.pest1, Pco1_old = df.pest2$Pco1, Pco2_old = df.pest2$Pco2, Pco3_old = df.pest2$Pco3)
+
+```
+
+
+
+Select rows with observations used in the manuscript. We keep years >= 2015 because resistance records are available for 2015, 2019 and 2023.
+
+```{r}
+# Keep observations from years with resistance data (2015, 2019, 2023)
+df.pest <- df.pest %>% filter(Year >= 2015)
+
+dim(df.pest)
+```
+
+
+```{r}
+# Compute integer number of dead beetles (used in binomial summaries / modeling)
+df.pest$N_dead <- as.integer(df.pest$N_beetles * df.pest$Prop_dead)
+```
+
+```{r}
+# Quick check of fields and dataset summary
+summary(unique(df.pest$field))
+dim(df.pest)
+summary(df.pest)
+```
+
+df.pest$wei_prop = as.numeric(df.pest$wei_prop)
+df.pest$cpb_count = df.pest$cpba_count + df.pest$cpbl_count #)/2
+df.pest$year = as.character(df.pest$year)
+df.pest$Pco1_adp = df.pest$Pco1
+df.pest$Pco1 = df.pest$Pco1_old
+
+```{r}
+# Prepare a few derived variables used in the descriptive table
+df.pest$wei_prop <- as.numeric(df.pest$wei_prop)
+df.pest$cpb_count <- df.pest$cpba_count + df.pest$cpbl_count
+
+# Ensure a 'year' character column exists (some files use Year vs year)
+if (!'year' %in% names(df.pest)) df.pest$year <- as.character(df.pest$Year) else df.pest$year <- as.character(df.pest$year)
+
+# Keep a copy of currently used PCo columns and replace PCo with the older-gen values
+df.pest$Pco1_adp <- df.pest$Pco1
+df.pest$Pco2_adp <- df.pest$Pco2
+df.pest$Pco3_adp <- df.pest$Pco3
+
+df.pest$Pco1 <- df.pest$Pco1_old
+df.pest$Pco2 <- df.pest$Pco2_old
+df.pest$Pco3 <- df.pest$Pco3_old
+
+# Create the Table 1: select variables used in the manuscript and render via gtsummary
+df.pest %>%
+  dplyr::select(N_beetles, Prop_dead, gdd, cum_gdd, summer_avg_temp, summer_hottest_temp, summer_avg_percip, summer_heavy_rainfall_days, summer_temp_variability, winter_coldest_temp, winter_heavy_rainfall_days, winter_temp_variability, winter_warm_day_count, winter_extreme_cold_days, spring_frost_free_days, wei_prop, wei_intensity, cpb_count, Pco1, Pco2, Pco3, Pco1_adp, Pco2_adp, Pco3_adp, lng, lat, year) %>%
+  tbl_summary() %>%
+  as_gt()
+
+```
+
+```
+
+

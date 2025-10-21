@@ -1,0 +1,206 @@
+---
+title: "PCo Imputation diagnostics and outputs"
+author: "J. Francisco Mandujano Reyes"
+date: "2024-10-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2); library(dplyr); library(tidyr)
+library(sp); library(rgdal); library(raster)
+library(INLA); library(INLAspacetime); library(inlabru)
+library(bigsplines); library(viridis)
+library(broom)
+```
+
+```{r load-data, warning=FALSE, message=FALSE}
+# Paths (edit if needed)
+workdir <- "/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/FINAL_CODE/input_data/"
+
+if (dir.exists(workdir)) setwd(workdir)
+# data_file1 <- 'PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_v2.csv' # adaptation
+data_file2 <- 'PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_old_gen_v2.csv' # regular
+
+# Load merged dataset and attach older-gen PCo columns for comparison
+# df.pest <- read.csv(data_file1)
+df.pest <- read.csv(data_file2)
+
+# keep years with resistance observations (2015, 2019, 2023)
+df.pest <- df.pest %>% filter(Year >= 2015)
+df.pest$N_dead <- as.integer(df.pest$N_beetles * df.pest$Prop_dead)
+
+# keep working copy
+dataf <- df.pest
+dim(dataf)
+summary(dataf)
+```
+
+```{r prepare-mesh}
+# Prepare coordinates (project to UTM) and temporal index
+coords <- as.data.frame(dataf[, c('Lon', 'Lat')])
+coordinates(coords) <- ~Lon + Lat
+proj4string(coords) <- CRS('+proj=longlat +datum=WGS84')
+coords_utm <- spTransform(coords, CRS('+proj=utm +zone=16 +datum=WGS84 +units=km'))
+coords_mat <- as.matrix(coords_utm@coords)
+colnames(coords_mat) <- c('utmx', 'utmy')
+dataf$utmx <- coords_mat[,1]; dataf$utmy <- coords_mat[,2]
+dataf$time <- dataf$Year - min(dataf$Year) + 1
+
+# Build spatial mesh and temporal mesh
+smesh <- inla.mesh.2d(loc = coords_mat, max.edge = 8, offset = 10, cutoff = 5)
+h <- 1
+tmesh <- fm_mesh_1d(loc = seq(1, max(dataf$time) + h/2, h), degree = 1)
+
+plot(smesh); points(coords_mat, pch = 20)
+```
+
+```{r model-define}
+# Define spatio-temporal model (non-separable '121' used here)
+stmodel <- stModel.define(
+  smesh = smesh,
+  tmesh = tmesh,
+  model = '121',
+  # control.priors = list(prs = c(2.0, 0.01), prt = c(5.0, 0.01), psigma = c(3.0, 0.01))
+  control.priors = list(prs = c(258, 0.01), prt = c(10.0, 0.01), psigma = c(0.015, 0.01)),
+  constr = TRUE
+)
+
+# Simple control for observation precision
+lkprec <- list(prec = list(prior = 'pcprec', param = c(1/1500, 1e-4)))
+ctrlf <- list(hyper = lkprec)
+```
+
+```{r datalike-and-components}
+# We'll impute PCo1, PCo2 and PCo3 using the same covariates + spatio-temporal field.
+# datalike uses formula Pco ~ . to pick up covariates from dataf; components below include the field
+
+datalike1 <- like(formula = Pco1 ~ ., family = 'gaussian', control.family = ctrlf, data = dataf)
+datalike2 <- like(formula = Pco2 ~ ., family = 'gaussian', control.family = ctrlf, data = dataf)
+datalike3 <- like(formula = Pco3 ~ ., family = 'gaussian', control.family = ctrlf, data = dataf)
+
+linpred1 <- ~ -1 + Intercept(1) + gdd + cum_gdd + wei_prop + field(list(space = cbind(utmx, utmy), time = time), model = stmodel)
+linpred2 <- ~ -1 + Intercept(1) + gdd + cum_gdd + wei_prop + field(list(space = cbind(utmx, utmy), time = time), model = stmodel)
+linpred3 <- ~ -1 + Intercept(1) + gdd + cum_gdd + wei_prop + field(list(space = cbind(utmx, utmy), time = time), model = stmodel)
+```
+
+```{r run-bru}
+# Fit models (these can take time). We use empirical Bayes integration strategy here.
+result1 <- bru(components = linpred1, datalike1, options = list(control.inla = list(int.strategy = 'eb'), control.fixed = list(expand.factor.strategy = 'inla'), verbose = FALSE))
+result2 <- bru(components = linpred2, datalike2, options = list(control.inla = list(int.strategy = 'eb'), control.fixed = list(expand.factor.strategy = 'inla'), verbose = FALSE))
+result3 <- bru(components = linpred3, datalike3, options = list(control.inla = list(int.strategy = 'eb'), control.fixed = list(expand.factor.strategy = 'inla'), verbose = FALSE))
+
+summary(result1)
+summary(result2)
+summary(result3)
+```
+
+```{r posterior-hyper}
+# Extract posterior summaries for hyperparameters (example)
+post.h1 <- list(
+  sigma_e = inla.tmarginal(function(x) exp(-x/2), result1$internal.marginals.hyperpar[[1]]),
+  range_s = inla.tmarginal(function(x) exp(x), result1$internal.marginals.hyperpar[[2]]),
+  range_t = inla.tmarginal(function(x) exp(x), result1$internal.marginals.hyperpar[[3]]),
+  sigma_u = inla.tmarginal(function(x) exp(x), result1$internal.marginals.hyperpar[[4]])
+)
+
+post.h2 <- list(
+  sigma_e = inla.tmarginal(function(x) exp(-x/2), result2$internal.marginals.hyperpar[[1]]),
+  range_s = inla.tmarginal(function(x) exp(x), result2$internal.marginals.hyperpar[[2]]),
+  range_t = inla.tmarginal(function(x) exp(x), result2$internal.marginals.hyperpar[[3]]),
+  sigma_u = inla.tmarginal(function(x) exp(x), result2$internal.marginals.hyperpar[[4]])
+)
+
+post.h3 <- list(
+  sigma_e = inla.tmarginal(function(x) exp(-x/2), result3$internal.marginals.hyperpar[[1]]),
+  range_s = inla.tmarginal(function(x) exp(x), result3$internal.marginals.hyperpar[[2]]),
+  range_t = inla.tmarginal(function(x) exp(x), result3$internal.marginals.hyperpar[[3]]),
+  sigma_u = inla.tmarginal(function(x) exp(x), result3$internal.marginals.hyperpar[[4]])
+)
+
+shyper1 <- t(sapply(post.h1, function(m) unlist(inla.zmarginal(m, silent = TRUE))))
+shyper2 <- t(sapply(post.h2, function(m) unlist(inla.zmarginal(m, silent = TRUE))))
+shyper3 <- t(sapply(post.h3, function(m) unlist(inla.zmarginal(m, silent = TRUE))))
+
+shyper1[, c(1,2,3,7)]; shyper2[, c(1,2,3,7)]; shyper3[, c(1,2,3,7)]
+```
+
+```{r project-fields, warning=FALSE}
+# Project the estimated spatio-temporal field to a regular grid for quick visualization
+prmesh1 <- smesh
+res <- result1
+k <- max(unique(dataf$time))
+iset <- inla.spde.make.index('i', n.spde = smesh$n, n.group = k)
+
+stepsize <- 4 * 100 / 333
+nxy <- round(c(diff(range(coords_mat[,1])), diff(range(coords_mat[,2]))) / stepsize)
+
+projgrid <- inla.mesh.projector(prmesh1, xlim = range(coords_mat[,1]), ylim = range(coords_mat[,2]), dims = nxy)
+
+start <- dim(dataf)[1] + dim(res$summary.fixed)[1] + 1
+last <- dim(res$summary.fitted.values)[1]
+
+xmean <- vector('list', k)
+for (j in 1:k) xmean[[j]] <- inla.mesh.project(projgrid, res$summary.random$field$mean[iset$i.group == j])
+
+par(mfrow=c(3,3))
+z_lim <- c(min(unlist(xmean), na.rm = TRUE), max(unlist(xmean), na.rm = TRUE))
+for (i in 1:k) imagebar(projgrid$x, projgrid$y, xmean[[i]], main = 2013 + i, zlim = z_lim, xlab = 'Latitude', ylab = 'Longitude', col = viridis(50))
+```
+
+```{r impute-values}
+# Extract imputed fitted values (first block corresponds to observations row order)
+dataf$Pco1_imp <- result1$summary.fitted.values$mean[1:dim(dataf)[1]]
+dataf$Pco2_imp <- result2$summary.fitted.values$mean[1:dim(dataf)[1]]
+dataf$Pco3_imp <- result3$summary.fitted.values$mean[1:dim(dataf)[1]]
+
+summary(dataf$Pco1_imp); summary(dataf$Pco2_imp); summary(dataf$Pco3_imp)
+
+# Histogram comparisons
+par(mfrow = c(3,2))
+hist(dataf$Pco1_imp, main = 'PCo1 imputed', xlim = c(-0.5, 0.5), prob = TRUE)
+hist(dataf$Pco1, main = 'PCo1 observed', xlim = c(-0.5, 0.5), prob = TRUE)
+hist(dataf$Pco2_imp, main = 'PCo2 imputed', xlim = c(-0.5, 0.5), prob = TRUE)
+hist(dataf$Pco2, main = 'PCo2 observed', xlim = c(-0.5, 0.5), prob = TRUE)
+hist(dataf$Pco3_imp, main = 'PCo3 imputed', xlim = c(-0.5, 0.5), prob = TRUE)
+hist(dataf$Pco3, main = 'PCo3 observed', xlim = c(-0.5, 0.5), prob = TRUE)
+```
+
+```{r diagnostics}
+# Scatter plots observed vs imputed
+plot(dataf$Pco1_imp, dataf$Pco1, xlab = 'imputed', ylab = 'observed'); abline(0,1)
+plot(dataf$Pco2_imp, dataf$Pco2, xlab = 'imputed', ylab = 'observed'); abline(0,1)
+plot(dataf$Pco3_imp, dataf$Pco3, xlab = 'imputed', ylab = 'observed'); abline(0,1)
+
+# Compute simple metrics (MSE, MAE, R2)
+compute_metrics <- function(y_true, y_pred) {
+  valid_idx <- complete.cases(y_true, y_pred)
+  y_true <- y_true[valid_idx]; y_pred <- y_pred[valid_idx]
+  mse <- mean((y_true - y_pred)^2, na.rm = TRUE)
+  mae <- mean(abs(y_true - y_pred), na.rm = TRUE)
+  r2 <- 1 - (sum((y_true - y_pred)^2, na.rm = TRUE) / sum((y_true - mean(y_true, na.rm = TRUE))^2, na.rm = TRUE))
+  return(list(MSE = mse, MAE = mae, R2 = r2))
+}
+
+cat('--- PCo1 ---\n')
+print(compute_metrics(dataf$Pco1, dataf$Pco1_imp))
+cat('--- PCo2 ---\n')
+print(compute_metrics(dataf$Pco2, dataf$Pco2_imp))
+cat('--- PCo3 ---\n')
+print(compute_metrics(dataf$Pco3, dataf$Pco3_imp))
+```
+
+```{r finalize}
+# For rows where original PCo exist, copy them back to imputed to preserve originals
+dataf[!is.na(dataf$Pco1), ]$Pco1_imp <- dataf[!is.na(dataf$Pco1), ]$Pco1
+dataf[!is.na(dataf$Pco2), ]$Pco2_imp <- dataf[!is.na(dataf$Pco2), ]$Pco2
+dataf[!is.na(dataf$Pco3), ]$Pco3_imp <- dataf[!is.na(dataf$Pco3), ]$Pco3
+
+# Save imputed dataset (keeps the filename used elsewhere in the repo)
+# write.csv(dataf, file = 'PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_old_gen_v2.csv', row.names = FALSE)
+
+```
+
+
+
+

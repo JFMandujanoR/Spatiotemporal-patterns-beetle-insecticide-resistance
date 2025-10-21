@@ -1,0 +1,257 @@
+---
+title: "gridSearchINLA"
+author: "J. Francisco Mandujano Reyes"
+date: "2025-10-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2); library(dplyr); library(tidyr)
+library(sp); library(rgdal); library(raster)
+library(INLA); library(INLAspacetime); library(inlabru)
+```
+
+```{r}
+# -- Parameters 
+data_file1 <- "PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_v2.csv"
+data_file2 <- "PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_old_gen_v2.csv"
+out_results <- "grid_search_results.csv"
+
+```
+
+```{r}
+# small hyperparameter grid (tune as needed)
+grid <- expand.grid(
+  c_rs = c(2.0, 10.0),
+  c_rt = c(3.0, 5.0),
+  c_sigma = c(0.5, 3.0),
+  c_p_rs = c(0.01),
+  c_p_rt = c(0.01),
+  c_p_sigma = c(0.01)
+)
+
+# -- Load data
+df.pest1 <- read.csv(data_file1)
+df.pest2 <- read.csv(data_file2)
+df.pest <- cbind(df.pest1, Pco1_imp_old = df.pest2$Pco1_imp, Pco3_imp_old = df.pest2$Pco3_imp)
+out_results <- "grid_search_results.csv" # Output filename variable
+
+# rename/adapt PCo columns used in downstream scripts (keeps backward compatibility)
+df.pest$Pco1_imp_adp <- df.pest$Pco1_imp
+df.pest$Pco2_imp_adp <- df.pest$Pco2_imp
+df.pest$Pco3_imp_adp <- df.pest$Pco3_imp
+df.pest$Pco1_imp <- df.pest$Pco1_imp_old
+df.pest$Pco2_imp <- df.pest$Pco2_imp_old
+df.pest$Pco3_imp <- df.pest$Pco3_imp_old
+
+dataf <- df.pest %>% filter(Year >= 2015)
+```
+
+
+```{r}
+library(sp)
+library(rgdal)
+# Define the original coordinates
+# coordinates(coords ) <- ~Lon + Lat
+proj4string(coords) <- CRS("+proj=longlat +datum=WGS84")
+# Project to UTM Zone 16N
+coords_utm <- spTransform(coords, CRS("+proj=utm +zone=16 +datum=WGS84 +units=km"))
+
+coords = coords_utm@coords
+
+coords = as.matrix(coords)
+colnames(coords) = c("utmx", "utmy")
+
+dataf$utmx = coords[,1]
+dataf$utmy = coords[,2]
+
+dataf$time = dataf$Year - min(dataf$Year) + 1
+k <- max(unique(dataf$time)) # times
+
+
+smesh <- inla.mesh.2d(
+  loc = as.matrix(coords),
+  max.edge = 8, #c(5, 100),
+  offset = 10, #c(10, 20),
+  cutoff = 5 )#, 3
+
+h = 1
+tmesh <- fm_mesh_1d(loc = seq(1, max(dataf$time) + h/2, h),  degree = 1)
+
+# changing nomenclature to match paper:
+dataf$Pco1_imp_adp = df.pest$Pco1_imp
+dataf$Pco2_imp_adp = df.pest$Pco2_imp
+dataf$Pco3_imp_adp = df.pest$Pco3_imp
+
+dataf$Pco1_imp = df.pest$Pco1_imp_old
+dataf$Pco2_imp = df.pest$Pco2_imp_old
+dataf$Pco3_imp = df.pest$Pco3_imp_old
+
+dataf$cpb_count = df.pest$cpba_count + df.pest$cpbl_count #)/2
+
+xnames <- c('gdd', 'cum_gdd', 'summer_avg_temp', 'summer_hottest_temp', 'summer_avg_percip', 
+            'summer_heavy_rainfall_days', 'summer_temp_variability', 'winter_coldest_temp', 
+            'winter_heavy_rainfall_days', 'winter_temp_variability', 'winter_warm_day_count', 
+            'winter_extreme_cold_days', 'spring_frost_free_days', 'wei_prop', 'wei_intensity', 
+            'cpb_count', 'Pco1_imp', 'Pco3_imp', 'Pco2_imp_adp', 'Pco3_imp_adp')
+
+xmean <- colMeans(dataf[, xnames])
+xsd <- sapply(dataf[,xnames], sd)
+dataf[, xnames] = scale(dataf[, xnames], xmean, xsd)
+
+# Define shrinkage priors for each covariate
+cf <- list(
+  mean = list(),  # default mean = 0 for unspecified parameters
+  prec = list()   # placeholder for individual precisions
+)
+# List of covariates
+vars <- c(
+  "gdd", "cum_gdd", "summer_avg_temp", "summer_hottest_temp",
+  "summer_avg_percip", "summer_heavy_rainfall_days",
+  "summer_temp_variability", "winter_coldest_temp",
+  "winter_heavy_rainfall_days", "winter_temp_variability",
+  "winter_warm_day_count", "winter_extreme_cold_days",
+  "spring_frost_free_days", "wei_prop", "wei_intensity",
+  "cpb_count", 'Pco1_imp', 'Pco3_imp', 'Pco2_imp_adp', 'Pco3_imp_adp'
+)
+
+# Prior means for fixed-effect coefficients (can be edited in the params block)
+prior_means <- c(0.870125300, 0.881702515,  1.046808745, -3.163300779,  0.713990880,  0.040640645, -2.548006216,
+                 -0.583184585, -0.326397272, -1.637719698, -2.076140409, -0.115863831, -0.933383080,  0.429569980,
+                 0.168097287,  0.049466646,  0.011328881,  0.056465377, 0.005338820, -0.003849697)
+
+i = 1
+# Assign mean=0, precision=100 (i.e., SD ≈ 0.1 on coefficient scale)
+for (v in vars) {
+  cf$mean[[v]] <- prior_means[i]
+  cf$prec[[v]] <- 1000 #my_sds[i]
+  i = i + 1
+}
+
+# Define grid of hyperparameters
+grid <- expand.grid(
+  c_rs = c(2.0, 10.0),
+  c_rt = c(3.0, 5.0), 
+  c_sigma = c(0.5, 3.0),
+  c_p_rs = c(0.01),
+  c_p_rt = c(0.01),
+  c_p_sigma = c(0.01)
+)
+
+# example:
+# prs = c(0.1, 0.01), # 1 P(spatial range < 1) = 0.01
+# prt = c(0.5, 0.01), # 5 P(temporal range < 10) = 0.01
+# psigma = c(0.1, 0.01) # 1 P(sigma > 1) = 0.01
+
+# Placeholder for results
+results_table <- data.frame(
+  c_rs = numeric(),
+  c_rt = numeric(),
+  c_sigma = numeric(),
+  c_p_rs = numeric(),
+  c_p_rt = numeric(),
+  c_p_sigma = numeric(),
+  model = character(),
+  waic = numeric(),
+  dic = numeric(),
+  stringsAsFactors = FALSE
+)
+
+datalike <- like(
+  formula = N_dead ~ ., 
+  family = "binomial", 
+  Ntrials = N_beetles,
+  data=dataf)
+
+```
+
+
+```{r}
+# Loop over each parameter combination
+for (i in 1:nrow(grid)) {
+  row <- grid[i, ]
+  
+  # Define models with new priors
+  stmodel <- stModel.define(
+    smesh = smesh,
+    tmesh = tmesh,
+    model = '121',
+    control.priors = list(
+      prs = c(row$c_rs, row$c_p_rs),
+      prt = c(row$c_rt, row$c_p_rt),
+      psigma = c(row$c_sigma, row$c_p_sigma)
+    )
+  )
+  
+  stmodel_sep <- stModel.define(
+    smesh = smesh,
+    tmesh = tmesh,
+    model = '102',
+    control.priors = list(
+      prs = c(row$c_rs, row$c_p_rs),
+      prt = c(row$c_rt, row$c_p_rt),
+      psigma = c(row$c_sigma, row$c_p_sigma)
+    )
+  )
+   
+  linpred <- ~ -1+gdd+cum_gdd +summer_avg_temp+summer_hottest_temp+wei_prop+Pco3_imp+ field(list(space = cbind(utmx, utmy), time = time), model = stmodel)
+  linpred_sep <- ~ -1+gdd+cum_gdd +summer_avg_temp+summer_hottest_temp+wei_prop+Pco3_imp+ field(list(space = cbind(utmx, utmy), time = time), model = stmodel_sep)
+  linpred_simple <- ~ -1+gdd+cum_gdd +summer_avg_temp+summer_hottest_temp+wei_prop+Pco3_imp
+  
+  # Fit models
+  result <- bru(components = linpred, datalike, options = list(control.fixed = cf, verbose = FALSE))
+  result_sep <- bru(components = linpred_sep, datalike, options = list(control.fixed = cf, verbose = FALSE))
+  result_simple <- bru(components = linpred_simple, datalike, options = list(control.fixed = cf, verbose = FALSE))
+  
+  # Extract metrics
+  metrics <- list(
+    result = summary(result)$inla,
+    result_sep = summary(result_sep)$inla,
+    result_simple = summary(result_simple)$inla
+  )
+  
+  for (model_name in names(metrics)) {
+    model_obj <- metrics[[model_name]]
+    waic_val <- tryCatch(model_obj$waic$waic, error = function(e) NA)
+    dic_val <- tryCatch(model_obj$dic$dic, error = function(e) NA)
+    
+    results_table <- rbind(
+      results_table,
+      data.frame(
+        c_rs = row$c_rs,
+        c_rt = row$c_rt,
+        c_sigma = row$c_sigma,
+        c_p_rs = row$c_p_rs,
+        c_p_rt = row$c_p_rt,
+        c_p_sigma = row$c_p_sigma,
+        model = model_name,
+        waic = waic_val,
+        dic = dic_val,
+        stringsAsFactors = FALSE
+      )
+    )
+  }
+}
+
+
+```
+
+
+```{r}
+# Sort by WAIC or DIC
+best_by_waic <- results_table[which.min(results_table$waic), ]
+best_by_dic <- results_table[which.min(results_table$dic), ]
+
+# write.csv(results_table, file = out_results, row.names = FALSE)
+print(best_by_waic)
+
+print("Best by DIC:")
+print(best_by_dic)
+```
+
+
+

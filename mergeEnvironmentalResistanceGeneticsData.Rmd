@@ -1,0 +1,101 @@
+---
+title: "Abundance-Climate-Cropland data now is used for potato intensity calculation, resistance and genetics "
+author: "J. Francisco Mandujano Reyes"
+date: "2024-10-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+## Purpose: merge climate/cropland/abundance points with temporal resistance records and nearest genetics
+## Output: final dataset used for modeling (CSV written at the end of the script)
+
+library(sp)
+library(tidyverse)
+library(lubridate)
+library(readr)
+library(broom)
+library(vroom)
+library(ggplot2)
+library(stringr)
+library(rgdal)
+library(raster)
+library(sf)
+library(parallel)
+library(fuzzyjoin)
+```
+
+## Read genetics data
+```{r}
+setwd("/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/FINAL_CODE/input_data")
+
+# Adjust path below if your imputed genetics file is stored elsewhere
+# OLD ONE
+genetics = read.csv("better_genetics_Mar18.csv")
+# NEW ONE
+#genetics = read.csv("better_genetics_Jun2.csv")
+
+# Inspect basic structure
+glimpse(genetics)
+```
+
+## Read base climate/abundance dataset and merge resistance records by proximity
+```{r}
+setwd("/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/FINAL_CODE/input_data")
+
+new_df <- read_csv('final_data_for_modeling.csv')
+new_df <- new_df %>% rename(Year = year, Lat = lat, Lon = lng)
+
+resist <- read.csv('temporal_resistance_data.csv')
+resist <- resist %>% mutate(Year = as.numeric(Year), Latitude = as.numeric(Latitude), Longitude = as.numeric(Longitude)) %>% drop_na()
+
+years <- sort(unique(new_df$Year))
+data_res <- tibble()
+
+# Use geo_left_join (fuzzyjoin) to attach nearest resistance point within 0.2 km for each year
+for (yr in years) {
+  if (yr %in% resist$Year) {
+    cat('Merging resistance for', yr, '\n')
+    current <- new_df %>% filter(Year == yr) %>%
+      geo_left_join(resist %>% filter(Year == yr), by = c('Lat' = 'Latitude', 'Lon' = 'Longitude'), max_dist = 0.2, unit = 'km') %>%
+      dplyr::select(-Year.y) %>% rename(Year = Year.x)
+  } else {
+    current <- new_df %>% filter(Year == yr)
+  }
+  data_res <- bind_rows(data_res, current)
+}
+
+dim(data_res)
+```
+
+Attach genetics by nearest location within the same year
+
+```{r}
+data_res2 <- tibble()
+for (yr in years) {
+  if (yr %in% genetics$Year) {
+    cat('Merging genetics for', yr, '\n')
+    current <- data_res %>% filter(Year == yr) %>%
+      geo_left_join(genetics %>% filter(Year == yr), by = c('Lat' = 'Latitude', 'Lon' = 'Longitude'), max_dist = 0.2, unit = 'km') %>%
+      dplyr::select(-Year.y) %>% rename(Year = Year.x)
+  } else {
+    current <- data_res %>% filter(Year == yr)
+  }
+  data_res2 <- bind_rows(data_res2, current)
+}
+
+# Clean and rename fields created by the joins
+data_res2 <- data_res2 %>%
+  mutate(Latitude = coalesce(Latitude.x, Latitude.y), Longitude = coalesce(Longitude.x, Longitude.y)) %>%
+  dplyr::select(-Latitude.x, -Longitude.x, -Latitude.y, -Longitude.y)
+
+summary(data_res2)
+```
+
+Save merged dataset (adjust filename if desired)
+```{r}
+# write.csv(data_res2, file = 'PotatoClimateIntensityData_OK_resistance_better_genetics_Nursultan_vars_Jun2_old_gen.csv', row.names = FALSE)
+# write.csv(data_res2, file = "PotatoClimateIntensityData_OK_resistance_better_genetics_Nursultan_vars_Jun2.csv", row.names=FALSE)
+
+```

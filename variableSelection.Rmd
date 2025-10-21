@@ -1,0 +1,252 @@
+---
+title: "INLA SPDE approach for WNS data"
+author: "J. Francisco Mandujano Reyes"
+date: "2024-10-08"
+output: html_document
+---
+
+This RMarkdown is used for variable exploration and selection prior to model-fitting. The goal is to inspect candidate covariates, scale them, and produce summaries/plots used downstream in the pipeline.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(maps)
+library(mapdata)
+library(plotly)
+library(maptools)
+library(dplyr)
+library(broom)
+library(sp)
+library(raster)
+library(tidyr)
+
+library(INLA)
+library(INLAspacetime)
+library(inlabru)
+
+```
+
+Code based on:
+- https://github.com/eliaskrainski/INLAspacetime
+- https://github.com/eliaskrainski/INLAspacetime/blob/master/vignettes/web/piemonte.Rmd
+
+```{r}
+setwd("/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/FINAL_CODE/input_data")
+
+df.pest1 = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_v2.csv")
+df.pest2 = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_old_gen_v2.csv")
+
+df.pest = cbind(df.pest1, Pco1_imp_old = df.pest2$Pco1_imp, Pco3_imp_old = df.pest2$Pco3_imp) 
+
+df.pest$N_dead = as.integer(df.pest$N_beetles*df.pest$Prop_dead)
+
+# changing nomenclature to match paper:
+df.pest$Pco1_imp_adp = df.pest$Pco1_imp
+df.pest$Pco2_imp_adp = df.pest$Pco2_imp
+df.pest$Pco3_imp_adp = df.pest$Pco3_imp
+
+df.pest$Pco1_imp = df.pest$Pco1_imp_old
+df.pest$Pco2_imp = df.pest$Pco2_imp_old
+df.pest$Pco3_imp = df.pest$Pco3_imp_old
+
+dataf = df.pest %>% filter(Year >= 2015)
+
+dim(dataf)
+
+```
+
+```{r}
+# extract coordinates
+coords = as.data.frame( dataf[,c('Lon','Lat')] ) 
+
+library(sp)
+library(rgdal)
+# Define the original coordinates
+coordinates(coords ) <- ~Lon + Lat
+proj4string(coords) <- CRS("+proj=longlat +datum=WGS84")
+# Project to UTM Zone 16N
+coords_utm <- spTransform(coords, CRS("+proj=utm +zone=16 +datum=WGS84 +units=km"))
+
+coords = coords_utm@coords
+
+coords = as.matrix(coords)
+colnames(coords) = c("utmx", "utmy")
+
+dataf$utmx = coords[,1]
+dataf$utmy = coords[,2]
+
+dataf$time = dataf$Year - min(dataf$Year) + 1
+k <- max(unique(dataf$time)) 
+
+smesh <- inla.mesh.2d(
+  loc = as.matrix(coords),
+  max.edge = 8, 
+  offset = 10, 
+  cutoff = 5 )
+
+h = 1
+tmesh <- fm_mesh_1d(loc = seq(1, max(dataf$time) + h/2, h),  degree = 1)
+
+plot(smesh)
+points(coords, pch = 20 )
+```
+
+```{r}
+node_coords <- smesh$loc
+distance_matrix <- dist(node_coords)
+min_distance <- min(distance_matrix)
+max_distance <- max(distance_matrix)
+
+min_distance
+0.5*max_distance
+
+mean(dataf$Prop_dead*dataf$N_beetles*(1-dataf$Prop_dead), na.rm = T)
+```
+
+
+```{r}
+dataf$cpb_count = dataf$cpba_count + dataf$cpbl_count #)/2
+
+xnames <- c('gdd', 'cum_gdd', 'summer_avg_temp', 'summer_hottest_temp', 'summer_avg_percip', 
+            'summer_heavy_rainfall_days', 'summer_temp_variability', 'winter_coldest_temp', 
+            'winter_heavy_rainfall_days', 'winter_temp_variability', 'winter_warm_day_count', 
+            'winter_extreme_cold_days', 'spring_frost_free_days', 'wei_prop', 'wei_intensity', 
+            'cpb_count', 'Pco1_imp', 'Pco3_imp', 'Pco2_imp_adp', 'Pco3_imp_adp')
+
+# scale
+xmean <- colMeans(dataf[, xnames])
+xsd <- sapply(dataf[,xnames], sd)
+dataf[, xnames] = scale(dataf[, xnames], xmean, xsd)
+```
+
+
+```{r}
+ggplot(gather(dataf[,xnames]), aes(value)) + 
+    geom_histogram(bins = 10) + 
+    facet_wrap(~key, scales = 'free_x')
+```
+
+
+
+
+```{r}
+linpred_simple <- ~ -1 + gdd + cum_gdd + summer_avg_temp + summer_hottest_temp + summer_avg_percip + summer_heavy_rainfall_days + summer_temp_variability + winter_coldest_temp + winter_heavy_rainfall_days + winter_temp_variability + winter_warm_day_count + winter_extreme_cold_days + spring_frost_free_days + wei_prop + wei_intensity + cpb_count + Pco1_imp + Pco3_imp + Pco2_imp_adp + Pco3_imp_adp 
+
+```
+
+```{r}
+lkprec <- list(phi = list(prior = "pcprec", param = c(0.1, 0.05))) # P(phi > 1) = 0.05
+
+cens = 0.01
+
+ctrlf <- list(
+  hyper = lkprec,
+  beta.censor.value = cens
+)
+
+datalike <- like(
+  formula = N_dead ~ ., 
+  family = "binomial", 
+  Ntrials = N_beetles,
+  data=dataf)
+
+######################################################################################################
+# Define shrinkage priors for each covariate
+cf <- list(
+  mean = list(),  # default mean = 0 for unspecified parameters
+  prec = list()   # placeholder for individual precisions
+)
+# List of covariates
+vars <- c(
+  "gdd", "cum_gdd", "summer_avg_temp", "summer_hottest_temp",
+  "summer_avg_percip", "summer_heavy_rainfall_days",
+  "summer_temp_variability", "winter_coldest_temp",
+  "winter_heavy_rainfall_days", "winter_temp_variability",
+  "winter_warm_day_count", "winter_extreme_cold_days",
+  "spring_frost_free_days", "wei_prop", "wei_intensity",
+  "cpb_count", 'Pco1_imp', 'Pco3_imp', 'Pco2_imp_adp', 'Pco3_imp_adp'
+)
+
+i = 2
+
+# Assign mean=0, precision=100 (i.e., SD ≈ 0.1 on coefficient scale)
+for (v in vars) {
+  cf$mean[[v]] <-  0 # 
+  cf$prec[[v]] <- 100 # 1/(sds_vector[i])^2 #100 # 
+  i = i+1
+}
+
+# For the intercept, use a less restrictive prior (e.g., SD ≈ 10)
+cf$mean[["(Intercept)"]] <- 0
+cf$prec[["(Intercept)"]] <- 0.01
+
+```
+
+
+```{r}
+result_simple <- 
+  bru(
+    components = linpred_simple,
+    datalike,
+    options = list(
+      control.fixed = cf,
+      verbose = !TRUE) 
+    )
+
+```
+
+
+```{r}
+summary(result_simple)
+```
+
+```{r}
+# summary(result_sep) 
+means_vector = result_simple$summary.fixed$mean
+sds_vector = result_simple$summary.fixed$sd
+
+means_vector
+sds_vector
+```
+
+
+```{r}
+
+
+summary(result_simple$summary.fitted.values$mean[1:dim(dataf)[1]] )
+
+hist( result_simple$summary.fitted.values$mean[1:dim(dataf)[1]] )
+
+
+```
+
+
+```{r}
+
+plot(result_simple$summary.fitted.values$mean[1:dim(dataf)[1]], dataf$Prop_dead)
+abline(0,1)
+
+
+```
+
+
+```{r}
+library(bigsplines)
+library(viridis)
+
+ggplot(dataf, aes(x = utmx, y = utmy, color = result_simple$summary.fitted.values$mean[1:dim(dataf)[1]])) +
+  geom_point(size = 2) +  # Adjust point size
+  scale_color_viridis_c() +  # Better color scale for continuous variables
+  facet_wrap(~ year) +  # Wrap by year
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(title = "Predicted proportion of dead beetles.",
+       x = "Easting", y = "Northing", color = "Predicted proportion")
+
+```
+
+
+
+
+
