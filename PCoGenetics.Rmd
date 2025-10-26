@@ -6,12 +6,12 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, root.dir = '/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/SpatiotemporalPatternsInsecticideResistance/input_data')
 ```
 
 ```{r}
+workdir <- '/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/SpatiotemporalPatternsInsecticideResistance/input_data/'
 
-workdir <- "'/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/FINAL_CODE/input_data'"
 if (dir.exists(workdir)) setwd(workdir)
 
 covar1 = read.csv('CPB_temp_avgcovariance.csv', row.names = 1)
@@ -123,7 +123,7 @@ print(result$scree_plot)
 # Merge with metadata and save final files
 final_result = result$group_means[,c(1:11)]
 final_result = final_result %>% left_join(unique(meta[,c(3,4,5)]), by = join_by(Group == Population))
-locations_populatons_1 = read_excel('Table_Genomic_Samplesv2.xlsx', sheet = "Table_S#_WGS_Samples")
+locations_populatons_1 = read_excel(paste(workdir,'Table_Genomic_Samplesv2.xlsx',sep = ''), sheet = "Table_S#_WGS_Samples")
 
 # To use individual level genetics data
 better_genetics = cbind(meta[,c(2,3,4)], result$coords_og[,c(1:11)])
