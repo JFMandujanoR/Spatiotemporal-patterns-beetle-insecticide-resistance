@@ -7,35 +7,55 @@ Important note for users
 
 Top-level workflow (recommended order)
 
-1) Compute PCo genetics
-   - File: `PCoGenetics.R`
-   - Purpose: compute principal coordinates (PCoA) from population/genotype covariance matrices and produce per-sample / per-population PCo axes that will be merged into the main dataset.
-   - How to use: open `PCoGenetics.R` in R/RStudio and run the script or the example block. Place the covariance and metadata files in `input_data/` or adjust paths inside the script.
+**IMPORTANT: Steps 1–2 must be run TWICE (once for each covariate set)** to produce outputs for both genetic datasets. After completing both runs, downstream scripts (steps 3–6) can be run with either covariate set by toggling the `covariate_set` variable.
 
-2) Merge environmental, resistance, and genetics data
+1) Compute PCo genetics **[RUN TWICE]**
+   - File: `PCoGenetics.Rmd`
+   - Purpose: compute principal coordinates (PCoA) from population/genotype covariance matrices. This script uses two covariate sets:
+     - **covar1**: CPB_temp_avgcovariance.csv → outputs `genetics_pco_covar1.csv` (better_genetics_Mar18)
+     - **covar2**: pcangsd_cpb_temp_cands.cov → outputs `genetics_pco_covar2.csv` (better_genetics_Jun2)
+   - How to use: 
+     1. Open `PCoGenetics.Rmd` and set `covar = covar1` (line ~25), then render to produce `genetics_pco_covar1.csv`
+     2. Change to `covar = covar2`, render again to produce `genetics_pco_covar2.csv`
+     3. Both files are written to `output_data/01_genetics/`
+
+2) Merge environmental, resistance, and genetics data **[RUN TWICE]**
    - R Markdown: `mergeEnvironmentalResistanceGeneticsData.Rmd`
-   - Purpose: take climate/cropland/abundance data, merge temporal resistance records and (nearest) genetics samples to produce the final dataset used for modeling.
-   - How to use: open and render the Rmd from R (for example, via the Knit button in RStudio or `rmarkdown::render()`). The Rmd writes a combined CSV such as `PotatoClimateIntensityData_OK_resistance_better_genetics_*.csv`.
+   - Purpose: combine climate/cropland/abundance data with temporal resistance records and genetics. Produces two merged datasets:
+     - **Run 1**: reads `genetics_pco_covar1.csv` → outputs `merged_data_covar1.csv`
+     - **Run 2**: reads `genetics_pco_covar2.csv` → outputs `merged_data_covar2.csv`
+   - How to use:
+     1. Open the Rmd and set `genetics_file <- "genetics_pco_covar1.csv"`, render to produce `merged_data_covar1.csv`
+     2. Change to `genetics_file <- "genetics_pco_covar2.csv"`, render again to produce `merged_data_covar2.csv`
+     3. Both files are written to `output_data/02_merged_data/`
+
 
 3) Create Table 1 (descriptive table)
    - R Markdown: `createTable1.Rmd`
    - Purpose: generate descriptive statistics and manuscript Table 1.
-   - How to use: open and run the Rmd.
+   - How to use: open and run the Rmd. This script reads from `input_data/` (legacy behavior for backward compatibility).
 
-4) Variable selection
+4) Variable selection **[SELECT COVARIATE SET]**
    - R Markdown: `variableSelection.Rmd`
    - Purpose: exploratory filtering, scaling, and selection of covariates used in modeling.
-   - How to use: open and run the Rmd; inspect chunks interactively to choose variables.
+   - How to use: 
+     - Set `covariate_set <- "covar1"` or `covariate_set <- "covar2"` to choose which genetics dataset to analyze
+     - Reads from `output_data/02_merged_data/merged_data_covar*.csv`
+     - Open and run the Rmd; inspect chunks interactively to choose variables.
 
 5) Grid search for model hyperparameters
-   - File / R Markdown: `gridSearchINLA.Rmd`
+   - File / R Markdown: `gridSearch.Rmd`
    - Purpose: run a grid search over spatial/temporal prior settings for the INLAspacetime model family and produce a `grid_search_results.csv` with model selection metrics.
-   - How to use: open and run the script or render the Rmd from R. Note this step can be computationally heavy — run on a workstation or compute node as appropriate.
+   - How to use: open and render the Rmd from R. Note this step can be computationally heavy — run on a workstation or compute node as appropriate.
 
-6) Fit pest resistance spatio-temporal model
+6) Fit pest resistance spatio-temporal model **[SELECT COVARIATE SET]**
    - R Markdown: `pestResistanceModel.Rmd`
    - Purpose: build and compare spatio-temporal INLA/inlabru models (non-separable vs separable structures), produce fitted values and spatial maps.
-   - How to use: open and run or render `pestResistanceModel.Rmd`. Expect long run-times depending on mesh and priors.
+   - How to use: 
+     - Set `covariate_set <- "covar1"` or `covariate_set <- "covar2"` to choose which genetics dataset to use
+     - Reads from `output_data/02_merged_data/merged_data_covar*.csv`
+     - Open and run or render the Rmd. Expect long run-times depending on mesh and priors.
+
 
 Input and Output Organization
 

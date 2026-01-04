@@ -15,6 +15,11 @@ outdir <- '/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmai
 
 if (dir.exists(workdir)) setwd(workdir)
 
+# IMPORTANT: This script must be run TWICE (once for each covariate set)
+# - First run: use covar1 (CPB_temp_avgcovariance.csv) → produces genetics_pco_covar1.csv (better_genetics_Mar18)
+# - Second run: use covar2 (pcangsd_cpb_temp_cands.cov) → produces genetics_pco_covar2.csv (better_genetics_Jun2)
+# After running both, feed both outputs to mergeEnvironmentalResistanceGeneticsData.Rmd
+
 covar1 = read.csv('CPB_temp_avgcovariance.csv', row.names = 1)
 image(as.matrix(covar1))
 image( as.matrix(covar1/rowSums(covar1)) )
@@ -22,12 +27,9 @@ image( as.matrix(covar1/rowSums(covar1)) )
 covar2 = read.table("pcangsd_cpb_temp_cands.cov", header = FALSE, sep = "", dec = ".")
 image(as.matrix(covar2))
 
-covar = (covar1+covar2)/2
-covar = covar1 #+covar2)/2
-image(as.matrix(covar))
-
-# change from covar 1 to covar 2 from old to new data
-covar = covar2
+# SELECT ONE: Uncomment the covariate set you want to use in this run
+covar = covar1  # Run 1: uses CPB_temp_avgcovariance.csv → outputs genetics_pco_covar1.csv
+# covar = covar2  # Run 2: uses pcangsd_cpb_temp_cands.cov → outputs genetics_pco_covar2.csv
 
 meta = read.csv('CPB_temp_metadata.csv')
 
@@ -137,6 +139,11 @@ better_genetics = better_genetics %>% left_join(locations_populatons, by=c("Samp
 
 
 ```{r}
-write.csv(better_genetics, file = file.path(outdir, "genetics_pco.csv"), row.names=FALSE)
+# Output filename depends on which covariate set was used above
+# If using covar1: outputs genetics_pco_covar1.csv (better_genetics_Mar18 equivalent)
+# If using covar2: outputs genetics_pco_covar2.csv (better_genetics_Jun2 equivalent)
+output_suffix <- if (identical(covar, covar1)) "covar1" else "covar2"
+write.csv(better_genetics, file = file.path(outdir, paste0("genetics_pco_", output_suffix, ".csv")), row.names=FALSE)
+cat("Output written to:", file.path(outdir, paste0("genetics_pco_", output_suffix, ".csv")), "\n")
 ```
 

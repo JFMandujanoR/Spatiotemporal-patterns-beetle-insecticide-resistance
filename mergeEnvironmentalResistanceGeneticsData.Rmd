@@ -33,13 +33,19 @@ outdir <- "/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmai
 ```{r}
 setwd(indir)
 
-# Adjust path below if your imputed genetics file is stored elsewhere
-# Using genetics from previous stage
-genetics = read.csv("genetics_pco.csv")
+# IMPORTANT: This script must be run TWICE to produce outputs for both covariate sets:
+# - First run: reads genetics_pco_covar1.csv → outputs merged_data_covar1.csv (uses better_genetics_Mar18)
+# - Second run: reads genetics_pco_covar2.csv → outputs merged_data_covar2.csv (uses better_genetics_Jun2)
+# After running both, use the appropriate merged dataset in variableSelection and pestResistanceModel
+
+# SELECT ONE: Specify which covariate-specific genetics file to use
+genetics_file <- "genetics_pco_covar1.csv"  # Run 1: uses covar1 from PCoGenetics
+# genetics_file <- "genetics_pco_covar2.csv"  # Run 2: uses covar2 from PCoGenetics
+
+genetics = read.csv(genetics_file)
 
 # Inspect basic structure
 glimpse(genetics)
-```
 
 ## Read base climate/abundance dataset and merge resistance records by proximity
 ```{r}
@@ -96,6 +102,11 @@ summary(data_res2)
 
 Save merged dataset (adjust filename if desired)
 ```{r}
-write.csv(data_res2, file = file.path(outdir, "merged_data.csv"), row.names = FALSE)
+# Output filename matches the covariate set used in this run
+# If using genetics_pco_covar1.csv: outputs merged_data_covar1.csv (PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_old_gen_v2.csv equivalent)
+# If using genetics_pco_covar2.csv: outputs merged_data_covar2.csv (PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_v2.csv equivalent)
+output_suffix <- if (grepl("covar1", genetics_file)) "covar1" else "covar2"
+write.csv(data_res2, file = file.path(outdir, paste0("merged_data_", output_suffix, ".csv")), row.names = FALSE)
+cat("Output written to:", file.path(outdir, paste0("merged_data_", output_suffix, ".csv")), "\n")
 
 ```

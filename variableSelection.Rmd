@@ -34,10 +34,18 @@ Code based on:
 ```{r}
 indir <- "/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/SpatiotemporalPatternsInsecticideResistance/input_data"
 outdir <- "/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/SpatiotemporalPatternsInsecticideResistance/output_data/04_variable_selection"
-setwd(indir)
+merge_outdir <- "/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/SpatiotemporalPatternsInsecticideResistance/output_data/02_merged_data"
 
-df.pest1 = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_v2.csv")
-df.pest2 = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_old_gen_v2.csv")
+# SELECT ONE: Specify which covariate set to analyze
+# covar1: uses genetics_pco_covar1.csv and merged_data_covar1.csv (better_genetics_Mar18)
+# covar2: uses genetics_pco_covar2.csv and merged_data_covar2.csv (better_genetics_Jun2)
+covariate_set <- "covar2"  # Change to "covar1" to use the other covariate set
+
+df.pest1 = read.csv(file.path(merge_outdir, paste0("merged_data_", covariate_set, ".csv")))
+
+# For comparison: also read the other covariate set to attach old PCo columns
+other_covariate <- if (covariate_set == "covar1") "covar2" else "covar1"
+df.pest2 = read.csv(file.path(merge_outdir, paste0("merged_data_", other_covariate, ".csv")))
 
 df.pest = cbind(df.pest1, Pco1_imp_old = df.pest2$Pco1_imp, Pco3_imp_old = df.pest2$Pco3_imp) 
 
