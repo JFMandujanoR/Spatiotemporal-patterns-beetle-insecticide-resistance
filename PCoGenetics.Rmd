@@ -11,6 +11,7 @@ knitr::opts_chunk$set(echo = TRUE, root.dir = '/Users/mandujanoreyes/Library/Clo
 
 ```{r}
 workdir <- '/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/SpatiotemporalPatternsInsecticideResistance/input_data/'
+outdir <- '/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/SpatiotemporalPatternsInsecticideResistance/output_data/01_genetics/'
 
 if (dir.exists(workdir)) setwd(workdir)
 
@@ -127,17 +128,15 @@ locations_populatons_1 = read_excel(paste(workdir,'Table_Genomic_Samplesv2.xlsx'
 
 # To use individual level genetics data
 better_genetics = cbind(meta[,c(2,3,4)], result$coords_og[,c(1:11)])
-locations_populatons = locations_populatons_1 %>% dplyr::select(Year, Population, SampleID, Latitude, Longitude) # %>% unique()
-better_genetics = better_genetics %>% left_join(locations_populatons, by=c("SampleID" = "SampleID")) %>% 
-  dplyr::select(-Year.y, -Population.y) %>%
+locations_populatons = locations_populatons_1 %>% dplyr::select(Year, population, sampleid, Latitude, Longitude) # %>% unique()
+better_genetics = better_genetics %>% left_join(locations_populatons, by=c("SampleID" = "sampleid")) %>% 
+  dplyr::select(-Year.y, -population) %>%
   rename(Pco1 = PC1, Pco2 = PC2, Pco3 = PC3, Pco4 = PC4, Pco5 = PC5, Pco6 = PC6,
-         Pco7 = PC7, Pco8 = PC8, Pco9 = PC9, Pco10 = PC10, Year = Year.x, Population = Population.x) 
+         Pco7 = PC7, Pco8 = PC8, Pco9 = PC9, Pco10 = PC10, Year = Year.x, Population = Population) 
 ```
 
 
 ```{r}
-write.csv(better_genetics, file = "better_genetics_Jun2.csv", row.names=FALSE)
-# write.csv(better_genetics, file = "better_genetics_Mar18.csv", row.names=FALSE)
-
+write.csv(better_genetics, file = file.path(outdir, "genetics_pco.csv"), row.names=FALSE)
 ```
 

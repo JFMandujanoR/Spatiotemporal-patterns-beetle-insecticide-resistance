@@ -19,15 +19,13 @@ library(sp); library(rgdal); library(raster)
 library(plotly); library(maptools)
 
 # Configure data paths here (edit if you keep inputs elsewhere)
-workdir <- "/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance"
+workdir <- "/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/SpatiotemporalPatternsInsecticideResistance/input_data"
+outdir <- "/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/SpatiotemporalPatternsInsecticideResistance/output_data/03_tables"
 if (dir.exists(workdir)) setwd(workdir)
 
 data_file1 <- 'PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_v2.csv'
 data_file2 <- 'PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_old_gen_v2.csv'
 
-```
-
-```{r, warning = FALSE, message = FALSE}
 # Load merged datasets (current and the older-genetics columns used for comparison)
 df.pest1 <- read.csv(data_file1)
 df.pest2 <- read.csv(data_file2)
@@ -89,8 +87,6 @@ df.pest %>%
   dplyr::select(N_beetles, Prop_dead, gdd, cum_gdd, summer_avg_temp, summer_hottest_temp, summer_avg_percip, summer_heavy_rainfall_days, summer_temp_variability, winter_coldest_temp, winter_heavy_rainfall_days, winter_temp_variability, winter_warm_day_count, winter_extreme_cold_days, spring_frost_free_days, wei_prop, wei_intensity, cpb_count, Pco1, Pco2, Pco3, Pco1_adp, Pco2_adp, Pco3_adp, lng, lat, year) %>%
   tbl_summary() %>%
   as_gt()
-
-```
 
 ```
 

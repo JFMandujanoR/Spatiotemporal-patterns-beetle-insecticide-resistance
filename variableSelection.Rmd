@@ -32,7 +32,9 @@ Code based on:
 - https://github.com/eliaskrainski/INLAspacetime/blob/master/vignettes/web/piemonte.Rmd
 
 ```{r}
-setwd("/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/FINAL_CODE/input_data")
+indir <- "/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/SpatiotemporalPatternsInsecticideResistance/input_data"
+outdir <- "/Users/mandujanoreyes/Library/CloudStorage/GoogleDrive-juanipnc6@gmail.com/My Drive/PhD/JunZhu_WNS/Pest_resistance/SpatiotemporalPatternsInsecticideResistance/output_data/04_variable_selection"
+setwd(indir)
 
 df.pest1 = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_v2.csv")
 df.pest2 = read.csv("PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_Jun2_old_gen_v2.csv")

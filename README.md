@@ -8,9 +8,9 @@ Important note for users
 Top-level workflow (recommended order)
 
 1) Compute PCo genetics
-   - File: `computePCoGenetics.R`
+   - File: `PCoGenetics.R`
    - Purpose: compute principal coordinates (PCoA) from population/genotype covariance matrices and produce per-sample / per-population PCo axes that will be merged into the main dataset.
-   - How to use: open `computePCoGenetics.R` in R/RStudio and run the script or the example block. Place the covariance and metadata files in `input_data/` or adjust paths inside the script.
+   - How to use: open `PCoGenetics.R` in R/RStudio and run the script or the example block. Place the covariance and metadata files in `input_data/` or adjust paths inside the script.
 
 2) Merge environmental, resistance, and genetics data
    - R Markdown: `mergeEnvironmentalResistanceGeneticsData.Rmd`
@@ -28,14 +28,59 @@ Top-level workflow (recommended order)
    - How to use: open and run the Rmd; inspect chunks interactively to choose variables.
 
 5) Grid search for model hyperparameters
-   - File / R Markdown: `gridSearchINLA.Rmd.R` (script-like Rmd)
+   - File / R Markdown: `gridSearchINLA.Rmd`
    - Purpose: run a grid search over spatial/temporal prior settings for the INLAspacetime model family and produce a `grid_search_results.csv` with model selection metrics.
    - How to use: open and run the script or render the Rmd from R. Note this step can be computationally heavy — run on a workstation or compute node as appropriate.
 
 6) Fit pest resistance spatio-temporal model
-   - R Markdown: `pestResistanceModel.Rmd` (and variants)
+   - R Markdown: `pestResistanceModel.Rmd`
    - Purpose: build and compare spatio-temporal INLA/inlabru models (non-separable vs separable structures), produce fitted values and spatial maps.
    - How to use: open and run or render `pestResistanceModel.Rmd`. Expect long run-times depending on mesh and priors.
+
+Input and Output Organization
+
+**input_data/**
+Contains all raw input files needed for the analysis pipeline:
+- `better_genetics_*.csv` — PCo genetics data (sourced from genomic analysis)
+- `CPB_temp_*.csv` — Covariance and metadata for genetic covariates
+- `final_data_for_modeling.csv` — Base climate/abundance/cropland data
+- `temporal_resistance_data.csv` — Beetle resistance records
+- `PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_*.csv` — Pre-merged datasets
+- `Table_Genomic_Samplesv2.xlsx` — WGS sample metadata and reference tables
+- `pcangsd_cpb_temp_cands.cov` — Alternative covariance matrix
+
+**output_data/**
+Automatically organized outputs from each workflow stage:
+- `01_genetics/` — PCoA genetics outputs (e.g., `genetics_pco.csv`)
+- `02_merged_data/` — Combined environmental+resistance+genetics dataset (e.g., `merged_data.csv`)
+- `03_tables/` — Descriptive tables and Table 1 outputs
+- `04_variable_selection/` — Covariate selection plots and scaled variable outputs
+- `05_gridsearch/` — Grid search hyperparameter results (e.g., `grid_search_results.csv`)
+- `06_models/` — Fitted INLA/inlabru models and predictions
+- `07_predictions/` — Final prediction maps and spatial outputs
+
+
+Input and Output Organization
+
+**input_data/**
+Contains all raw input files needed for the analysis pipeline:
+- `better_genetics_*.csv` — PCo genetics data (sourced from genomic analysis)
+- `CPB_temp_*.csv` — Covariance and metadata for genetic covariates
+- `final_data_for_modeling.csv` — Base climate/abundance/cropland data
+- `temporal_resistance_data.csv` — Beetle resistance records
+- `PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_*.csv` — Pre-merged datasets
+- `Table_Genomic_Samplesv2.xlsx` — WGS sample metadata and reference tables
+- `pcangsd_cpb_temp_cands.cov` — Alternative covariance matrix
+
+**output_data/**
+Automatically organized outputs from each workflow stage:
+- `01_genetics/` — PCoA genetics outputs (e.g., `genetics_pco.csv`)
+- `02_merged_data/` — Combined environmental+resistance+genetics dataset (e.g., `merged_data.csv`)
+- `03_tables/` — Descriptive tables and Table 1 outputs
+- `04_variable_selection/` — Covariate selection plots and scaled variable outputs
+- `05_gridsearch/` — Grid search hyperparameter results (e.g., `grid_search_results.csv`)
+- `06_models/` — Fitted INLA/inlabru models and predictions
+- `07_predictions/` — Final prediction maps and spatial outputs
 
 Notes about specific files and options
 - In `PCoGenetics.Rmd` (and the compute PCo script), you can choose which covariates to include for downstream analysis — notably the workflow supports selecting either `covar1` or `covar2`. See the top of the file for guidance on which covariate set to use.
@@ -51,7 +96,7 @@ Dependencies and tips
 - File locations: input files live under `input_data/` (for example: `final_data_for_modeling.csv`, `CPB_temp_avgcovariance.csv`, etc.). Adjust file paths in the Rmd/R scripts if you keep inputs elsewhere.
 
 Suggested lightweight workflow (same order as above)
-1. Compute PCo genetics (`computePCoGenetics.R`)
+1. Compute PCo genetics (`PCoGenetics.R`)
 2. Render `mergeEnvironmentalResistanceGeneticsData.Rmd` to produce the combined dataset
 3. Inspect and run `variableSelection.Rmd` and `createTable1.Rmd` for summaries
 4. Run `gridSearchINLA.Rmd.R` to find reasonable priors
