@@ -59,29 +59,6 @@ Automatically organized outputs from each workflow stage:
 - `06_models/` — Fitted INLA/inlabru models and predictions
 - `07_predictions/` — Final prediction maps and spatial outputs
 
-
-Input and Output Organization
-
-**input_data/**
-Contains all raw input files needed for the analysis pipeline:
-- `better_genetics_*.csv` — PCo genetics data (sourced from genomic analysis)
-- `CPB_temp_*.csv` — Covariance and metadata for genetic covariates
-- `final_data_for_modeling.csv` — Base climate/abundance/cropland data
-- `temporal_resistance_data.csv` — Beetle resistance records
-- `PotatoClimateIntensityData_OK_resistance_better_genetics_imputed_*.csv` — Pre-merged datasets
-- `Table_Genomic_Samplesv2.xlsx` — WGS sample metadata and reference tables
-- `pcangsd_cpb_temp_cands.cov` — Alternative covariance matrix
-
-**output_data/**
-Automatically organized outputs from each workflow stage:
-- `01_genetics/` — PCoA genetics outputs (e.g., `genetics_pco.csv`)
-- `02_merged_data/` — Combined environmental+resistance+genetics dataset (e.g., `merged_data.csv`)
-- `03_tables/` — Descriptive tables and Table 1 outputs
-- `04_variable_selection/` — Covariate selection plots and scaled variable outputs
-- `05_gridsearch/` — Grid search hyperparameter results (e.g., `grid_search_results.csv`)
-- `06_models/` — Fitted INLA/inlabru models and predictions
-- `07_predictions/` — Final prediction maps and spatial outputs
-
 Notes about specific files and options
 - In `PCoGenetics.Rmd` (and the compute PCo script), you can choose which covariates to include for downstream analysis — notably the workflow supports selecting either `covar1` or `covar2`. See the top of the file for guidance on which covariate set to use.
 - In `geneticsImputation.Rmd`, two genetics data options are supported and named in code/comments as follows:
